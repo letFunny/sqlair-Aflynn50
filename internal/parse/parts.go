@@ -40,28 +40,52 @@ func (p *InputPart) String() string {
 }
 
 func (p *InputPart) ToSQL() string {
-	return ""
+	return "?"
 }
 
 // OutputPart represents an expression to be used as output in our SDL.
 type OutputPart struct {
-	Source []FullName
-	Target FullName
+	Columns []FullName
+	Target  FullName
 }
 
 func (p *OutputPart) String() string {
 	var colString string
-	for _, col := range p.Source {
+	for _, col := range p.Columns {
 		colString = colString + col.String() + " "
 	}
 	if len(colString) >= 2 {
 		colString = colString[:len(colString)-1]
 	}
-	return "OutputPart[Source:" + colString + " Target:" + p.Target.String() + "]"
+	return "OutputPart[Columns:" + colString + " Target:" + p.Target.String() + "]"
 }
 
 func (p *OutputPart) ToSQL() string {
-	return ""
+	// The &Type.Field syntax is part of the DSL but not SQL so we can not
+	// print that. We do need to print the columns though (if any)
+	// There are two cases here
+	var out string
+	if len(p.Columns) != 0 {
+		// Case 1
+		// foo as &Type.Field --> print foo
+		for i, c := range p.Columns {
+			if i > 0 {
+				out = out + ", "
+			}
+			out = out + c.String()
+		}
+		return out
+	}
+
+	// Case 2: No AS just a Go Struct with a field
+	// &Type.column --> column
+	if p.Target.Name != "" {
+		return p.Target.Name
+	}
+
+	// Case 3: A Go struct, map or var with no field
+	// &Type --> *
+	return "*"
 }
 
 // BypassPart represents a part of the SDL that we want to pass to the
