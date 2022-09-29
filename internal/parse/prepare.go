@@ -11,6 +11,7 @@ import (
 type PreparedExpr struct {
 	parsed    *ParsedExpr
 	inputArgs []any
+	sql       string
 }
 
 // parseTag parses the input tag string and returns its
@@ -95,21 +96,24 @@ func reflectInputValue(p *InputPart, value any) (any, error) {
 // by the user match the values specified in the query. It also gets the exact
 // values needed for execution by going inside structs/maps and getting the
 // relevant fields
+
+// NOTE: we now have to access output struct fields by tag name
 func (pe *ParsedExpr) Prepare(inputArgs ...any) (*PreparedExpr, error) {
 	var i int
 	var args []any
 
+	// Match inputParts in SQL to arguments and generate args for exection
 	for _, part := range pe.queryParts {
-		// *part is used instead of part because only *InputPart implements the
-		// interface queryPart, not InputPart
 		if p, ok := part.(*InputPart); ok {
 			if len(inputArgs) <= i {
 				return nil, fmt.Errorf("not enough input values provided")
 			}
+
 			arg, err := reflectInputValue(p, inputArgs[i])
 			if err != nil {
 				return nil, err
 			}
+
 			args = append(args, arg)
 			i++
 		}
@@ -117,6 +121,12 @@ func (pe *ParsedExpr) Prepare(inputArgs ...any) (*PreparedExpr, error) {
 	if i < len(inputArgs) {
 		return nil, fmt.Errorf("%v inputs in query but %v inputs provided", i, len(inputArgs))
 	}
-	return &PreparedExpr{pe, args}, nil
 
+	// Generate SQL
+	sql := ""
+	for _, p := range pe.queryParts {
+		sql = sql + p.ToSQL()
+	}
+
+	return &PreparedExpr{pe, args, sql}, nil
 }
