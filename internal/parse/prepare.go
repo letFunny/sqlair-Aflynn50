@@ -29,20 +29,8 @@ func parseTag(tag string) (string, bool, error) {
 	return options[0], omitEmpty, nil
 }
 
-// Can this function do the full process of checking and returning the value to
-// plug in? We can factorise out the reflect stuff later if it has cominalities
-// with the output.
-
-// Check the name of the inputPart matches the name of the argument
-// 	We do have to generate tag info since we look up the name of the field by
-// 	tag rather than by field.
-
-// Cases:
-// 	Struct
-//   Use the tag data to get the value out. Also check the name of the struct
-//   matches
-//  Map:
-
+// Gather the reflect information for an arguemnt, match it with the parameter
+// in the query, and return the argument for passing to the db for execution
 func reflectInputValue(p *InputPart, value any) (any, error) {
 
 	if value == (any)(nil) {
@@ -103,17 +91,10 @@ func reflectInputValue(p *InputPart, value any) (any, error) {
 	}
 }
 
-// Prepare checks that the arguments provided match the names in the query and
-// stores the information required to fit the resulting columns into the output.
-// In it we first check that the arguments match the I/O expressions in the
-// query then store the pairings of which resulting columns should go in which
-// output expression. Since the column names are the same as the struct tags
-// this also conatins the information about them.
-// We also should work out if we need to output into a map or some such thing.
-
-// Prepare should just take input arguments right?
-// Say we just ignore all output values and only worry about them once we have
-// the scan, will that theoretically work?
+// Prepare takes a parsed expression and checks that the input values provided
+// by the user match the values specified in the query. It also gets the exact
+// values needed for execution by going inside structs/maps and getting the
+// relevant fields
 func (pe *ParsedExpr) Prepare(inputArgs ...any) (*PreparedExpr, error) {
 	var i int
 	var args []any
