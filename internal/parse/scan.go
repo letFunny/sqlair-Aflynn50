@@ -30,6 +30,9 @@ func (re *ResultExpr) Next() bool {
 	}
 	return false
 }
+func (re *ResultExpr) Close() error {
+	return re.rows.Close()
+}
 
 func (re *ResultExpr) Scan(outputArgs ...any) error {
 

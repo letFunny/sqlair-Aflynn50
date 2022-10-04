@@ -594,6 +594,7 @@ func TestScan(t *testing.T) {
 							}
 						}
 					}
+					resultExpr.Close()
 					if i != len(test.expectedResults)-1 {
 						t.Errorf("Test %d Failed (Wrong number of results):\n expected number: %d\n, actual number: %d\n",
 							test.index, len(test.expectedResults)-1, i)
@@ -607,5 +608,6 @@ func TestScan(t *testing.T) {
 		} else if err != nil {
 			t.Errorf("test parse error %s", err)
 		}
+		_, err = database.Exec("commit;")
 	}
 }
