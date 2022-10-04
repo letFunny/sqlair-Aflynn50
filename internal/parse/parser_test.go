@@ -582,7 +582,8 @@ func TestScan(t *testing.T) {
 			if preparedExpr, err = parsedExpr.Prepare(); err == nil {
 				if resultExpr, err = preparedExpr.Exec(database); err == nil {
 					var i int
-					for i, res := range test.expectedResults {
+					var res any
+					for i, res = range test.expectedResults {
 						if resultExpr.Next() {
 							if err = resultExpr.Scan(test.outArgs[i]); err != nil {
 								t.Errorf("scan error: %s", err)
