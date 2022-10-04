@@ -3,9 +3,6 @@ package parse
 import (
 	"fmt"
 	"reflect"
-	"strings"
-
-	"github.com/pkg/errors"
 )
 
 type PreparedExpr struct {
@@ -14,37 +11,14 @@ type PreparedExpr struct {
 	sql       string
 }
 
-// parseTag parses the input tag string and returns its
-// name and whether it contains the "omitempty" option.
-func parseTag(tag string) (string, bool, error) {
-	options := strings.Split(tag, ",")
-
-	var omitEmpty bool
-	if len(options) > 1 {
-		if strings.ToLower(options[1]) != "omitempty" {
-			return "", false, errors.Errorf("unexpected tag value %q", options[1])
-		}
-		omitEmpty = true
-	}
-
-	return options[0], omitEmpty, nil
-}
-
 // Gather the reflect information for an arguemnt, match it with the parameter
 // in the query, and return the argument for passing to the db for execution
-func reflectInputValue(p *InputPart, value any) (any, error) {
+func (p *InputPart) matchWithArg(value any) (any, error) {
 
-	if value == (any)(nil) {
-		return nil, fmt.Errorf("cannot use nil value as an argument")
+	v, err := GetReflectValue(value)
+	if err != nil {
+		return nil, err
 	}
-
-	v := reflect.ValueOf(value)
-	if v.IsNil() {
-		return nil, fmt.Errorf("cannot use nil value as an argument")
-	}
-
-	// Get the reflect.value of the thing v points to
-	v = reflect.Indirect(v)
 
 	switch v.Kind() {
 	case reflect.Struct:
@@ -63,7 +37,7 @@ func reflectInputValue(p *InputPart, value any) (any, error) {
 				continue
 			}
 
-			tag, omitEmpty, err := parseTag(tag)
+			tag, omitEmpty, err := ParseTag(tag)
 			if err != nil {
 				return nil, err
 			}
@@ -109,7 +83,7 @@ func (pe *ParsedExpr) Prepare(inputArgs ...any) (*PreparedExpr, error) {
 				return nil, fmt.Errorf("not enough input values provided")
 			}
 
-			arg, err := reflectInputValue(p, inputArgs[i])
+			arg, err := p.matchWithArg(inputArgs[i])
 			if err != nil {
 				return nil, err
 			}

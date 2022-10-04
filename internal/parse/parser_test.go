@@ -1,8 +1,13 @@
 package parse
 
 import (
+	"database/sql"
+	"fmt"
 	"log"
+	"reflect"
 	"testing"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type parseHelperTest struct {
@@ -79,13 +84,13 @@ func TestRunTable(t *testing.T) {
 // }
 
 type Address struct {
-	ID int `db:"id"`
+	ID int64 `db:"id"`
 }
 
 type Person struct {
-	ID         int    `db:"id"`
+	ID         int64  `db:"id"`
 	Fullname   string `db:"name"`
-	PostalCode int    `db:"address_id"`
+	PostalCode int64  `db:"address_id"`
 }
 
 type Manager struct {
@@ -429,11 +434,13 @@ func TestRound(t *testing.T) {
 	parser := NewParser()
 	for i, test := range tests {
 		var parsedExpr *ParsedExpr
+		var preparedExpr *PreparedExpr
+		var err error
 		if parsedExpr, _ = parser.Parse(test.input); parsedExpr.String() !=
 			test.expectedParsed {
 			t.Errorf("Test %d Failed (Parse): input: %s\nexpected: %s\nactual  : %s\n", i, test.input, test.expectedParsed, parsedExpr.String())
 		}
-		if preparedExpr, err := parsedExpr.Prepare(test.prepArgs...); err != nil {
+		if preparedExpr, err = parsedExpr.Prepare(test.prepArgs...); err != nil {
 			t.Errorf("Test %d Failed (Prepare): input: %s\nparsed AST: %s\nerror: %s\n",
 				i, test.input, test.expectedParsed, err)
 		} else if preparedExpr.sql != test.expectedCompleted {
@@ -441,6 +448,160 @@ func TestRound(t *testing.T) {
 				"\nerror: %s types:%#v\n",
 				i, preparedExpr.sql, test.expectedCompleted, err, test.prepArgs)
 		}
+	}
+}
 
+func createDb() (*sql.DB, error) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Exec("Create table people (id int, name varchar, address_id int);")
+	if err != nil {
+		return nil, fmt.Errorf("error creating table: %v", err)
+	}
+	inserts := []string{"INSERT INTO people VALUES (30, 'Fred', 1000);",
+		"INSERT INTO people VALUES (20, 'Mark', 1500);",
+		"INSERT INTO people VALUES (25, 'Mary', 3500);",
+		"INSERT INTO people VALUES (25, 'James', 3500);"}
+	for _, q := range inserts {
+		_, err := db.Exec(q)
+		if err != nil {
+			return nil, fmt.Errorf("error inserting data: %v", err)
+		}
+	}
+
+	_, err = db.Exec("commit;")
+	return db, nil
+}
+
+func execDisguardingResults(db *sql.DB, query string, inputs ...any) error {
+	p = NewParser()
+	parseExpr, err := p.Parse(query)
+	if err != nil {
+		return err
+	}
+	prepExpr, err := parseExpr.Prepare(inputs...)
+	if err != nil {
+		return err
+	}
+	_, err = prepExpr.Exec(db)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+//
+//func sqlairCreateDb() (*sql.DB, error) {
+//	var people = []*Person{
+//		&Person{30, "Fred", 1000},
+//		&Person{20, "Mark", 1500},
+//		&Person{25, "Mary", 3500},
+//		&Person{25, "James", 3500},
+//	}
+//
+//	db, err := sql.Open("sqlite3", ":memory:")
+//	if err != nil {
+//		return nil, fmt.Errorf("error creating db: %v", err)
+//	}
+//	err = execDisguardingResults(db, "Create table people (id int, name varchar, address_id int);")
+//	if err != nil {
+//		return nil, fmt.Errorf("error creating table: %v", err)
+//	}
+//	for _, p := range people {
+//		_, err = db.Exec("Create table people (id int, name varchar, address_id int);")
+//		err = execDisguardingResults(db, "INSERT INTO people VALUES ($Person.id, $Person.name, $Person.address_id);", p, p, p)
+//		if err != nil {
+//			return nil, fmt.Errorf("error inserting value: %v", err)
+//		}
+//	}
+//
+//	_, err = db.Exec("commit;")
+//
+//	return db, err
+//
+//}
+
+func TestScan(t *testing.T) {
+	var people = []any{
+		&Person{30, "Fred", 1000},
+		&Person{20, "Mark", 1500},
+		&Person{25, "Mary", 3500},
+		&Person{25, "James", 3500},
+	}
+	var tests = []struct {
+		index           int
+		input           string
+		outArgs         []any
+		expectedResults []any
+	}{
+		{
+			1,
+			"select * as &Person.* from people",
+			[]any{&Person{}, &Person{}, &Person{}, &Person{}},
+			people,
+		},
+		{
+			2,
+			"select * as &Person.* from people where name = 'Fred'",
+			[]any{&Person{}},
+			[]any{&Person{30, "Fred", 1000}},
+		},
+		{
+			3,
+			"select &Person.* from people where name = 'Fred'",
+			[]any{&Person{}},
+			[]any{&Person{30, "Fred", 1000}},
+		},
+		{
+			4,
+			"select (id, name) as &Person.* from people where name = 'Fred'",
+			[]any{&Person{}},
+			[]any{&Person{30, "Fred", 0}},
+		},
+		{
+			5,
+			"select people.* as &Person.*, people.id as &Person from people where name = 'Fred'",
+			[]any{&Person{}, &Person{}},
+			[]any{&Person{30, "Fred", 0}, &Person{30, "", 0}},
+		},
+	}
+	var err error
+	var parsedExpr *ParsedExpr
+	var preparedExpr *PreparedExpr
+	var resultExpr *ResultExpr
+
+	database, err := createDb()
+	if err != nil {
+		t.Errorf(err.Error())
+	}
+	parser := NewParser()
+	for _, test := range tests {
+		if parsedExpr, err = parser.Parse(test.input); err == nil {
+			if preparedExpr, err = parsedExpr.Prepare(); err == nil {
+				if resultExpr, err = preparedExpr.Exec(database); err == nil {
+					var i int
+					for i, res := range test.expectedResults {
+						if resultExpr.Next() {
+							if err = resultExpr.Scan(test.outArgs[i]); err != nil {
+								t.Errorf("scan error: %s", err)
+							}
+							if !reflect.DeepEqual(test.outArgs[i], res) {
+								t.Errorf("Test %d Failed (Scan):\n sql:%s\nparsed AST: %s\nexpected result: %#v\nactual result:   %#v",
+									test.index, test.input, parsedExpr.queryParts, res, test.outArgs[i])
+							}
+						}
+					}
+					if i != len(test.expectedResults)-1 {
+						t.Errorf("Test %d Failed (Wrong number of results):\n expected number: %d\n, actual number: %d\n",
+							test.index, len(test.expectedResults)-1, i)
+					}
+				}
+			}
+		}
+	}
+	if err != nil {
+		t.Errorf(err.Error())
 	}
 }
