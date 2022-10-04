@@ -564,7 +564,7 @@ func TestScan(t *testing.T) {
 			5,
 			"select people.* as &Person.*, people.id as &Person from people where name = 'Fred'",
 			[]any{&Person{}, &Person{}},
-			[]any{&Person{30, "Fred", 0}, &Person{30, "", 0}},
+			[]any{&Person{30, "Fred", 1000}, &Person{30, "", 0}},
 		},
 	}
 	var err error
@@ -598,11 +598,14 @@ func TestScan(t *testing.T) {
 						t.Errorf("Test %d Failed (Wrong number of results):\n expected number: %d\n, actual number: %d\n",
 							test.index, len(test.expectedResults)-1, i)
 					}
+				} else if err != nil {
+					t.Errorf("test exec error: %s", err)
 				}
+			} else if err != nil {
+				t.Errorf("test prepared error %s", err)
 			}
+		} else if err != nil {
+			t.Errorf("test parse error %s", err)
 		}
-	}
-	if err != nil {
-		t.Errorf(err.Error())
 	}
 }
