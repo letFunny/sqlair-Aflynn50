@@ -100,8 +100,6 @@ type Manager struct {
 type District struct {
 }
 
-type M map[string]any
-
 func TestRound(t *testing.T) {
 	var tests = []struct {
 		input             string
@@ -566,6 +564,24 @@ func TestScan(t *testing.T) {
 			[]any{&Person{}, &Person{}},
 			[]any{&Person{30, "Fred", 1000}, &Person{30, "", 0}},
 		},
+		{
+			6,
+			"select people.* as &M.* from people where name = 'Fred'",
+			[]any{&M{}},
+			[]any{&M{"id": 30, "name": "Fred", "address_id": 1000}},
+		},
+		{
+			7,
+			"select people.* as &M.name from people where name = 'Fred'",
+			[]any{&M{}},
+			[]any{&M{"name": "Fred"}},
+		},
+		{
+			8,
+			"select name as &M.name from people where name = 'Fred'",
+			[]any{&M{}},
+			[]any{&M{"name": "Fred"}},
+		},
 	}
 	var err error
 	var parsedExpr *ParsedExpr
@@ -584,7 +600,7 @@ func TestScan(t *testing.T) {
 					var i int
 					var res any
 					for i, res = range test.expectedResults {
-						if resultExpr.Next() {
+						if ok, err := resultExpr.Next(); ok {
 							if err = resultExpr.Scan(test.outArgs[i]); err != nil {
 								t.Errorf("scan error: %s", err)
 							}
@@ -592,6 +608,8 @@ func TestScan(t *testing.T) {
 								t.Errorf("Test %d Failed (Scan):\n sql:%s\nparsed AST: %s\nexpected result: %#v\nactual result:   %#v",
 									test.index, test.input, parsedExpr.queryParts, res, test.outArgs[i])
 							}
+						} else if err != nil {
+							t.Errorf("%s", err)
 						}
 					}
 					resultExpr.Close()

@@ -5,9 +5,17 @@ import (
 	"fmt"
 )
 
+type colInfo struct {
+	columns    []string
+	values     []any
+	valuePtrs  []any
+	colToIndex map[string]int
+}
+
 type ResultExpr struct {
-	parsed *ParsedExpr
-	rows   *sql.Rows
+	parsed  *ParsedExpr
+	rows    *sql.Rows
+	colInfo *colInfo
 }
 
 func (pe *PreparedExpr) Exec(db *sql.DB) (*ResultExpr, error) {
@@ -15,5 +23,8 @@ func (pe *PreparedExpr) Exec(db *sql.DB) (*ResultExpr, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot exec: %s database error: %s", pe.sql, err)
 	}
-	return &ResultExpr{pe.parsed, rows}, nil
+
+	// We fill in colInfo on the first call to Next to avoid its generation in
+	// cases where the user disregards the results
+	return &ResultExpr{pe.parsed, rows, nil}, nil
 }
