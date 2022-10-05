@@ -5,8 +5,6 @@ import (
 	"reflect"
 )
 
-type M map[string]any
-
 // Check that the args match then try and put the column inside
 func (p *OutputPart) matchWithArg(value any) {
 	// as

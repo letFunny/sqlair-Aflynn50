@@ -528,6 +528,10 @@ func TestScan(t *testing.T) {
 		&Person{25, "Mary", 3500},
 		&Person{25, "James", 3500},
 	}
+
+	var thirty int64 = 30
+	var thousand int64 = 1000
+
 	var tests = []struct {
 		index           int
 		input           string
@@ -568,7 +572,7 @@ func TestScan(t *testing.T) {
 			6,
 			"select people.* as &M.* from people where name = 'Fred'",
 			[]any{&M{}},
-			[]any{&M{"id": 30, "name": "Fred", "address_id": 1000}},
+			[]any{&M{"id": thirty, "name": "Fred", "address_id": thousand}},
 		},
 		{
 			7,
@@ -604,10 +608,26 @@ func TestScan(t *testing.T) {
 							if err = resultExpr.Scan(test.outArgs[i]); err != nil {
 								t.Errorf("scan error: %s", err)
 							}
+							if false && test.index == 6 {
+
+								o := test.outArgs[i].(*M)
+								vr := reflect.Indirect(reflect.ValueOf(res.(*M)))
+								vo := reflect.Indirect(reflect.ValueOf(o))
+								str := ""
+								mpitrr := vr.MapRange()
+								mpitro := vo.MapRange()
+								for mpitrr.Next() {
+									mpitro.Next()
+									str = str + fmt.Sprintf("\n\nval res: %#v\nval out: %#v\nkey res: %#v\nkey out: %#v\ntype res: %v\ntype key: %v\nis equal: %v\n\n", mpitrr.Value(), mpitro.Value(), mpitrr.Key(), mpitro.Key(), mpitrr.Value().Elem().Type(), mpitro.Value().Elem().Type(), reflect.DeepEqual(mpitrr.Value(), mpitro.Value()))
+								}
+								t.Errorf(str)
+							}
+
 							if !reflect.DeepEqual(test.outArgs[i], res) {
 								t.Errorf("Test %d Failed (Scan):\n sql:%s\nparsed AST: %s\nexpected result: %#v\nactual result:   %#v",
 									test.index, test.input, parsedExpr.queryParts, res, test.outArgs[i])
 							}
+
 						} else if err != nil {
 							t.Errorf("%s", err)
 						}
