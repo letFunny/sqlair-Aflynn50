@@ -608,20 +608,6 @@ func TestScan(t *testing.T) {
 							if err = resultExpr.Scan(test.outArgs[i]); err != nil {
 								t.Errorf("scan error: %s", err)
 							}
-							if false && test.index == 6 {
-
-								o := test.outArgs[i].(*M)
-								vr := reflect.Indirect(reflect.ValueOf(res.(*M)))
-								vo := reflect.Indirect(reflect.ValueOf(o))
-								str := ""
-								mpitrr := vr.MapRange()
-								mpitro := vo.MapRange()
-								for mpitrr.Next() {
-									mpitro.Next()
-									str = str + fmt.Sprintf("\n\nval res: %#v\nval out: %#v\nkey res: %#v\nkey out: %#v\ntype res: %v\ntype key: %v\nis equal: %v\n\n", mpitrr.Value(), mpitro.Value(), mpitrr.Key(), mpitro.Key(), mpitrr.Value().Elem().Type(), mpitro.Value().Elem().Type(), reflect.DeepEqual(mpitrr.Value(), mpitro.Value()))
-								}
-								t.Errorf(str)
-							}
 
 							if !reflect.DeepEqual(test.outArgs[i], res) {
 								t.Errorf("Test %d Failed (Scan):\n sql:%s\nparsed AST: %s\nexpected result: %#v\nactual result:   %#v",
