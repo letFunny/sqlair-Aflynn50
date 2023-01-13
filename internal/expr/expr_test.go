@@ -15,7 +15,9 @@ type ExprSuite struct{}
 var _ = Suite(&ExprSuite{})
 
 type Address struct {
-	ID int `db:"id"`
+	ID       int    `db:"id"`
+	District string `db:"district"`
+	Street   string `db:"street"`
 }
 
 type Person struct {
@@ -410,4 +412,76 @@ func FuzzParser(f *testing.F) {
 		parser := expr.NewParser()
 		parser.Parse(s)
 	})
+}
+
+func (s *ExprSuite) TestValidPrepare(c *C) {
+	testList := []struct {
+		input            string
+		prepareArgs      []any
+		expectedPrepared string
+	}{{
+		"SELECT street FROM t WHERE x = $Address.street",
+		[]any{Address{}},
+		"SELECT street FROM t WHERE x = ?",
+	}, {
+		"SELECT p FROM t WHERE x = $Person.id",
+		[]any{Person{}},
+		"SELECT p FROM t WHERE x = ?",
+	}}
+	for _, test := range testList {
+		parser := expr.NewParser()
+		parsedExpr, _ := parser.Parse(test.input)
+		preparedExpr, err := parsedExpr.Prepare(test.prepareArgs...)
+
+		if err != nil {
+			c.Fatal(err)
+		}
+		c.Assert(preparedExpr.SQL, Equals, test.expectedPrepared)
+	}
+}
+
+func (s *ExprSuite) TestPrepareMismatchedStructName(c *C) {
+	testList := []struct {
+		sql     string
+		structs []any
+	}{{
+		sql:     "SELECT street FROM t WHERE x = $Address.street",
+		structs: []any{Person{ID: 1}},
+	}, {
+		sql:     "SELECT street AS &Address.street FROM t",
+		structs: []any{},
+	}, {
+		sql:     "SELECT street AS &Address.id FROM t",
+		structs: []any{Person{ID: 1}},
+	}}
+
+	for _, test := range testList {
+		parser := expr.NewParser()
+		parsedExpr, err := parser.Parse(test.sql)
+		_, err = parsedExpr.Prepare(Person{ID: 1})
+		c.Assert(err, ErrorMatches, `cannot prepare expression: unknown type: .*`)
+	}
+}
+
+func (s *ExprSuite) TestPrepareMissingTag(c *C) {
+	testList := []struct {
+		sql     string
+		structs []any
+	}{{
+		sql:     "SELECT street FROM t WHERE x = $Address.number",
+		structs: []any{Address{ID: 1}},
+	}, {
+		sql:     "SELECT (street, road) AS &Address.* FROM t",
+		structs: []any{Address{ID: 1}},
+	}, {
+		sql:     "SELECT &Address.road FROM t",
+		structs: []any{Person{ID: 1}},
+	}}
+
+	for _, test := range testList {
+		parser := expr.NewParser()
+		parsedExpr, err := parser.Parse(test.sql)
+		_, err = parsedExpr.Prepare(Person{ID: 1})
+		c.Assert(err, ErrorMatches, `cannot prepare expression: there is no tag with name .*`)
+	}
 }
