@@ -134,7 +134,8 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 	return outCols, nil
 }
 
-// Prepare takes a parsed expression and all the Go objects mentioned in it.
+// Prepare takes a parsed expression and struct instantiations of all the type
+// mentioned in it.
 // The IO parts of the statement are checked for validity against the types
 // and expanded if necessary.
 func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
