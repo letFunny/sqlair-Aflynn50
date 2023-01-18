@@ -18,14 +18,17 @@ type typeNameToInfo map[string]*info
 // prepareInput checks that the input expression corresponds to a Go struct
 // passed to Prepare.
 func prepareInput(ti typeNameToInfo, p *inputPart) error {
-	if inf, ok := ti[p.source.prefix]; ok {
-		if _, ok := inf.tagToField[p.source.name]; ok {
-			return nil
-		}
-		return fmt.Errorf(`there is no tag with name "%s" in "%s"`,
+	inf, ok := ti[p.source.prefix]
+	if !ok {
+		return fmt.Errorf("unknown type: %s", p.source.prefix)
+	}
+
+	if _, ok = inf.tagToField[p.source.name]; !ok {
+		return fmt.Errorf("there is no tag with name %s in %s",
 			p.source.name, inf.structType.Name())
 	}
-	return fmt.Errorf(`unknown type: "%s"`, p.source.prefix)
+
+	return nil
 }
 
 func starCount(fns []fullName) int {
