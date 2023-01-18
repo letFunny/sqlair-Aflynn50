@@ -6,8 +6,7 @@ import (
 	"sort"
 )
 
-// PreparedExpr represents an SQL expression after the input and output parts
-// have been replaced by their corresponding expansions.
+// PreparedExpr contains an SQL expression that is ready for execution.
 type PreparedExpr struct {
 	ParsedExpr *ParsedExpr
 	SQL        string
@@ -15,16 +14,15 @@ type PreparedExpr struct {
 
 type typeNameToInfo map[string]*info
 
-// prepareInput checks that the input expression corresponds to a Go struct
-// passed to Prepare.
+// prepareInput checks that the input expression corresponds to a known type.
 func prepareInput(ti typeNameToInfo, p *inputPart) error {
 	inf, ok := ti[p.source.prefix]
 	if !ok {
-		return fmt.Errorf("unknown type: %s", p.source.prefix)
+		return fmt.Errorf(`unknown type: "%s"`, p.source.prefix)
 	}
 
 	if _, ok = inf.tagToField[p.source.name]; !ok {
-		return fmt.Errorf("there is no tag with name %s in %s",
+		return fmt.Errorf(`no tag with name "%s" in "%s"`,
 			p.source.name, inf.structType.Name())
 	}
 
@@ -137,7 +135,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 }
 
 // Prepare takes a parsed expression and all the Go objects mentioned in it.
-// The IO parts of the statement are checked for validity against the Go objects
+// The IO parts of the statement are checked for validity against the types
 // and expanded if necessary.
 func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 	defer func() {
