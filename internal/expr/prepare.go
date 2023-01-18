@@ -130,16 +130,21 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 			if err != nil {
 				return nil, err
 			}
-			sql.WriteString(p.toSQL())
+			sql.WriteString(p.toSQL([]string{}))
 			continue
 		}
+
 		if p, ok := part.(*outputPart); ok {
-			// Do nothing for now.
-			sql.WriteString(p.toSQL())
+			outCols, err := prepareOutput(ti, p)
+			if err != nil {
+				return nil, err
+			}
+			sql.WriteString(p.toSQL(outCols))
 			continue
 		}
+
 		p := part.(*bypassPart)
-		sql.WriteString(p.toSQL())
+		sql.WriteString(p.toSQL([]string{}))
 	}
 
 	return &PreparedExpr{ParsedExpr: pe, SQL: sql.String()}, nil
