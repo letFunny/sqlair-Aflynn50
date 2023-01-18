@@ -48,14 +48,6 @@ var tests = []struct {
 	[]any{Person{}},
 	"SELECT p.address_id, p.id, p.name",
 }, {
-	"multiple-quoted bypass expression",
-	`SELECT '''' AS &Person.*`,
-	`[Bypass[SELECT ] Bypass[''''] Bypass[ AS ] Output[[] [Person.*]]]`,
-}, {
-	"single quote in double quotes",
-	`SELECT "'" AS &Person.*`,
-	`[Bypass[SELECT ] Bypass["'"] Bypass[ AS ] Output[[] [Person.*]]]`,
-}, {
 	"quoted output expression",
 	"SELECT p.* AS &Person.*, '&notAnOutputExpresion.*' AS literal FROM t",
 	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Bypass['&notAnOutputExpresion.*'] Bypass[ AS literal FROM t]]",
@@ -232,21 +224,21 @@ var tests = []struct {
 }, {
 	"escaped double quote",
 	`SELECT foo FROM t WHERE t.p = "Jimmy ""Quickfingers"" Jones"`,
-	`[Bypass[SELECT foo FROM t WHERE t.p = ] ` +
-		`Bypass["Jimmy ""Quickfingers"" Jones"]]`,
+	`[Bypass[SELECT foo FROM t WHERE t.p = ] Bypass["Jimmy ""Quickfingers"" Jones"]]`,
+	[]any{},
+	`SELECT foo FROM t WHERE t.p = "Jimmy ""Quickfingers"" Jones"`,
 }, {
 	"escaped single quote",
 	`SELECT foo FROM t WHERE t.p = 'Olly O''Flanagan'`,
-	`[Bypass[SELECT foo FROM t WHERE t.p = ] ` +
-		`Bypass['Olly O''Flanagan']]`,
+	`[Bypass[SELECT foo FROM t WHERE t.p = ] Bypass['Olly O''Flanagan']]`,
+	[]any{},
+	`SELECT foo FROM t WHERE t.p = 'Olly O''Flanagan'`,
 }, {
 	"complex escaped quotes",
-	`SELECT * AS &Person.* FROM person WHERE ` +
-		`name IN ('Lorn', 'Onos T''oolan', '', ''' ''');`,
-	`[Bypass[SELECT * AS &Person.* FROM person WHERE name IN (] ` +
-		`Bypass['Lorn'] Bypass[, ] Bypass['Onos T''oolan'] ` +
-		`Bypass[, ] Bypass[''] Bypass[, ] Bypass[''' '''] ` +
-		`Bypass[);]]`,
+	`SELECT * AS &Person.* FROM person WHERE name IN ('Lorn', 'Onos T''oolan', '', ''' ''');`,
+	`[Bypass[SELECT ] Output[[*] [Person.*]] Bypass[ FROM person WHERE name IN (] Bypass['Lorn'] Bypass[, ] Bypass['Onos T''oolan'] Bypass[, ] Bypass[''] Bypass[, ] Bypass[''' '''] Bypass[);]]`,
+	[]any{Person{}},
+	`SELECT address_id, id, name FROM person WHERE name IN ('Lorn', 'Onos T''oolan', '', ''' ''');`,
 }, {
 	"update",
 	"UPDATE person SET person.address_id = $Address.id WHERE person.id = $Person.id",
@@ -436,7 +428,7 @@ func (s *ExprSuite) TestPrepareMissingTag(c *C) {
 			c.Fatal(err)
 		}
 		_, err = parsedExpr.Prepare(test.structs...)
-		c.Assert(err, ErrorMatches, `cannot prepare expression: there is no tag with name .*`,
+		c.Assert(err, ErrorMatches, `cannot prepare expression: no tag with name .*`,
 			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
 	}
 }

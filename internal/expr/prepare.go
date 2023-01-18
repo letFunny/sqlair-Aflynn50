@@ -52,7 +52,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 
 		_, ok = inf.tagToField[t.name]
 		if !ok && t.name != "*" {
-			return nil, fmt.Errorf(`there is no tag with name "%s" in "%s"`, t.name, inf.structType.Name())
+			return nil, fmt.Errorf(`no tag with name "%s" in "%s"`, t.name, inf.structType.Name())
 		}
 	}
 
@@ -66,7 +66,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 	}
 
 	starTarget := sct == 1
-	starColumn := scc == 1
+	starSource := scc == 1
 
 	numSources := len(p.source)
 	numTargets := len(p.target)
@@ -90,7 +90,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 			pref := ""
 
 			// Prepend table name. E.g. "t" in "t.* AS &P.*".
-			if lenS > 0 && p.source[0].prefix != "" {
+			if numSources > 0 && p.source[0].prefix != "" {
 				pref = p.source[0].prefix + "."
 			}
 
@@ -108,7 +108,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 		if numSources > 0 {
 			for _, c := range p.source {
 				if _, ok := inf.tagToField[c.name]; !ok {
-					return nil, fmt.Errorf(`there is no tag with name "%s" in "%s"`,
+					return nil, fmt.Errorf(`no tag with name "%s" in "%s"`,
 						c.name, inf.structType.Name())
 				}
 				outCols = append(outCols, c.String())
