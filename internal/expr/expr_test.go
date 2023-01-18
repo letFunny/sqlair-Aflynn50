@@ -374,9 +374,12 @@ func (s *ExprSuite) TestValidPrepare(c *C) {
 	}}
 	for _, test := range testList {
 		parser := expr.NewParser()
-		parsedExpr, _ := parser.Parse(test.input)
-		preparedExpr, err := parsedExpr.Prepare(test.prepareArgs...)
+		parsedExpr, err := parser.Parse(test.input)
+		if err != nil {
+			c.Fatal(err)
+		}
 
+		preparedExpr, err := parsedExpr.Prepare(test.prepareArgs...)
 		if err != nil {
 			c.Fatal(err)
 		}
@@ -402,9 +405,12 @@ func (s *ExprSuite) TestPrepareMismatchedStructName(c *C) {
 	for i, test := range testList {
 		parser := expr.NewParser()
 		parsedExpr, err := parser.Parse(test.sql)
+		if err != nil {
+			c.Fatal(err)
+		}
 		_, err = parsedExpr.Prepare(test.structs...)
 		c.Assert(err, ErrorMatches, `cannot prepare expression: unknown type: .*`,
-			Commentf("test %d failed:\nsql: '%s'\nstructs: '%+v'\np:'%s'", i, test.sql, test.structs, parsedExpr.String()))
+			Commentf("test %d failed:\nsql: '%s'\nstructs: '%+v'", i, test.sql, test.structs))
 	}
 }
 
@@ -426,8 +432,89 @@ func (s *ExprSuite) TestPrepareMissingTag(c *C) {
 	for i, test := range testList {
 		parser := expr.NewParser()
 		parsedExpr, err := parser.Parse(test.sql)
+		if err != nil {
+			c.Fatal(err)
+		}
 		_, err = parsedExpr.Prepare(test.structs...)
 		c.Assert(err, ErrorMatches, `cannot prepare expression: there is no tag with name .*`,
+			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
+	}
+}
+
+func (s *ExprSuite) TestPrepareInvalidAsteriskPlacement(c *C) {
+	testList := []struct {
+		sql     string
+		structs []any
+	}{{
+		sql:     "SELECT (&Address.*, &Person.*) FROM t",
+		structs: []any{Address{}, Person{}},
+	}, {
+		sql:     "SELECT (p.*, t.*) AS &Address.* FROM t",
+		structs: []any{Address{}},
+	}, {
+		sql:     "SELECT p.* AS &Address.street FROM t",
+		structs: []any{Address{}},
+	}}
+
+	for i, test := range testList {
+		parser := expr.NewParser()
+		parsedExpr, err := parser.Parse(test.sql)
+		if err != nil {
+			c.Fatal(err)
+		}
+		_, err = parsedExpr.Prepare(test.structs...)
+		c.Assert(err, ErrorMatches, "cannot prepare expression: invalid asterisk in output expression",
+			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
+	}
+}
+
+func (s *ExprSuite) TestPrepareAsteriskMix(c *C) {
+	testList := []struct {
+		sql     string
+		structs []any
+	}{{
+		sql:     "SELECT (&Address.*, &Person.id) FROM t",
+		structs: []any{Address{}, Person{}},
+	}, {
+		sql:     "SELECT (p.*, t.name) AS &Address.* FROM t",
+		structs: []any{Address{}},
+	}, {
+		sql:     "SELECT (name, p.*) AS (&Address.street, &Person.*) FROM t",
+		structs: []any{Address{}, Person{}},
+	}}
+
+	for i, test := range testList {
+		parser := expr.NewParser()
+		parsedExpr, err := parser.Parse(test.sql)
+		if err != nil {
+			c.Fatal(err)
+		}
+		_, err = parsedExpr.Prepare(test.structs...)
+		c.Assert(err, ErrorMatches, "cannot prepare expression: invalid mix of asterisk and none asterisk columns in output expression",
+			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
+	}
+}
+
+func (s *ExprSuite) TestPrepareMismatchedColsAndTargs(c *C) {
+	testList := []struct {
+		sql     string
+		structs []any
+	}{{
+		sql:     "SELECT (p.name, t.id) AS &Address.id FROM t",
+		structs: []any{Address{}},
+	}, {
+		sql:     "SELECT p.name AS (&Address.district, &Address.street) FROM t",
+		structs: []any{Address{}},
+	}}
+
+	for i, test := range testList {
+		parser := expr.NewParser()
+		parsedExpr, err := parser.Parse(test.sql)
+		if err != nil {
+			c.Fatal(err)
+		}
+		_, err = parsedExpr.Prepare(test.structs...)
+		c.Assert(err, ErrorMatches, "cannot prepare expression: mismatched number of cols and targets in output expression",
 			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
 	}
 }

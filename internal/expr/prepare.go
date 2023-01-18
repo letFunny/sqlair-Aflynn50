@@ -28,6 +28,16 @@ func prepareInput(ti typeNameToInfo, p *inputPart) error {
 	return fmt.Errorf(`unknown type: "%s"`, p.source.prefix)
 }
 
+func starCount(fns []fullName) int {
+	s := 0
+	for _, fn := range fns {
+		if fn.name == "*" {
+			s++
+		}
+	}
+	return s
+}
+
 func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 
 	var outCols []string = make([]string, 0)
@@ -45,19 +55,41 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 		}
 	}
 
+	// Check asterisk are in correct places.
+
+	sct := starCount(p.target)
+	scc := starCount(p.source)
+
+	if sct > 1 || scc > 1 || (scc == 1 && sct == 0) {
+		return nil, fmt.Errorf("invalid asterisk in output expression")
+	}
+
+	starTarget := sct == 1
+	starColumn := scc == 1
+
+	lenS := len(p.source)
+	lenT := len(p.target)
+
+	if (starTarget && lenT > 1) || (starColumn && lenS > 1) {
+		return nil, fmt.Errorf("invalid mix of asterisk and none asterisk columns in output expression")
+	}
+
+	if !starTarget && (lenS > 0 && (lenT != lenS)) {
+		return nil, fmt.Errorf("mismatched number of cols and targets in output expression")
+	}
+
 	// Case 1: Star target cases e.g. "...&P.*".
 	// In parse we ensure that if p.target[0] is a * then len(p.target) == 1
-	if p.target[0].name == "*" {
+	if starTarget {
 
 		inf, _ := ti[p.target[0].prefix]
 
 		// Case 1.1: Single star e.g. "t.* AS &P.*" or "&P.*"
-		if (len(p.source) > 0 && p.source[0].name == "*") ||
-			len(p.source) == 0 {
+		if starColumn || lenS == 0 {
 			pref := ""
 
 			// Prepend table name. E.g. "t" in "t.* AS &P.*".
-			if len(p.source) > 0 && p.source[0].prefix != "" {
+			if lenS > 0 && p.source[0].prefix != "" {
 				pref = p.source[0].prefix + "."
 			}
 
@@ -72,7 +104,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 		}
 
 		// Case 1.2: Explicit columns e.g. "(col1, t.col2) AS &P.*".
-		if len(p.source) > 0 {
+		if lenS > 0 {
 			for _, c := range p.source {
 				if _, ok := inf.tagToField[c.name]; !ok {
 					return nil, fmt.Errorf(`there is no tag with name "%s" in "%s"`,
@@ -87,7 +119,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 	// Case 2: None star target cases e.g. "...&(P.name, P.id)".
 
 	// Case 2.1: Explicit columns e.g. "name_1 AS P.name".
-	if len(p.source) > 0 {
+	if lenS > 0 {
 		for _, c := range p.source {
 			outCols = append(outCols, c.String())
 		}
