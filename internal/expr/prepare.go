@@ -68,14 +68,14 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 	starTarget := sct == 1
 	starColumn := scc == 1
 
-	lenS := len(p.source)
-	lenT := len(p.target)
+	numSources := len(p.source)
+	numTargets := len(p.target)
 
-	if (starTarget && lenT > 1) || (starColumn && lenS > 1) {
+	if (starTarget && numTargets > 1) || (starSource && numSources > 1) {
 		return nil, fmt.Errorf("invalid mix of asterisk and none asterisk columns in output expression")
 	}
 
-	if !starTarget && (lenS > 0 && (lenT != lenS)) {
+	if !starTarget && (numSources > 0 && (numTargets != numSources)) {
 		return nil, fmt.Errorf("mismatched number of cols and targets in output expression")
 	}
 
@@ -86,7 +86,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 		inf, _ := ti[p.target[0].prefix]
 
 		// Case 1.1: Single star e.g. "t.* AS &P.*" or "&P.*"
-		if starColumn || lenS == 0 {
+		if starSource || numSources == 0 {
 			pref := ""
 
 			// Prepend table name. E.g. "t" in "t.* AS &P.*".
@@ -105,7 +105,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 		}
 
 		// Case 1.2: Explicit columns e.g. "(col1, t.col2) AS &P.*".
-		if lenS > 0 {
+		if numSources > 0 {
 			for _, c := range p.source {
 				if _, ok := inf.tagToField[c.name]; !ok {
 					return nil, fmt.Errorf(`there is no tag with name "%s" in "%s"`,
@@ -120,7 +120,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 	// Case 2: None star target cases e.g. "...&(P.name, P.id)".
 
 	// Case 2.1: Explicit columns e.g. "name_1 AS P.name".
-	if lenS > 0 {
+	if numSources > 0 {
 		for _, c := range p.source {
 			outCols = append(outCols, c.String())
 		}
