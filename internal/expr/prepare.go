@@ -80,9 +80,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 	}
 
 	// Case 1: Star target cases e.g. "...&P.*".
-	// In parse we ensure that if p.target[0] is a * then len(p.target) == 1
 	if starTarget {
-
 		inf, _ := ti[p.target[0].prefix]
 
 		// Case 1.1: Single star e.g. "t.* AS &P.*" or "&P.*"
