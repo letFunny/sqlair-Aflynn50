@@ -80,9 +80,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 	}
 
 	// Case 1: Star target cases e.g. "...&P.*".
-	// In parse we ensure that if p.target[0] is a * then len(p.target) == 1
 	if starTarget {
-
 		inf, _ := ti[p.target[0].prefix]
 
 		// Case 1.1: Single star e.g. "t.* AS &P.*" or "&P.*"
@@ -156,7 +154,11 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 		ti[inf.structType.Name()] = inf
 	}
 
+	// Generate unique ids for output parts.
+
 	var sql bytes.Buffer
+	var n int
+
 	// Check and expand each query part.
 	for _, part := range pe.queryParts {
 		if p, ok := part.(*inputPart); ok {
@@ -164,7 +166,8 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 			if err != nil {
 				return nil, err
 			}
-			sql.WriteString(p.toSQL([]string{}))
+			s := p.toSQL([]string{}, 0)
+			sql.WriteString(s)
 			continue
 		}
 
@@ -173,12 +176,15 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 			if err != nil {
 				return nil, err
 			}
-			sql.WriteString(p.toSQL(outCols))
+			s := p.toSQL(outCols, n)
+			n += len(outCols)
+			sql.WriteString(s)
 			continue
 		}
 
 		p := part.(*bypassPart)
-		sql.WriteString(p.toSQL([]string{}))
+		s := p.toSQL([]string{}, 0)
+		sql.WriteString(s)
 	}
 
 	return &PreparedExpr{ParsedExpr: pe, SQL: sql.String()}, nil
