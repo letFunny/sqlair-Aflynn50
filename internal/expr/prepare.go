@@ -3,13 +3,20 @@ package expr
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"sort"
 )
 
 // PreparedExpr contains an SQL expression that is ready for execution.
 type PreparedExpr struct {
-	ParsedExpr *ParsedExpr
-	SQL        string
+	inputs  []*inputPart
+	outputs []*outputSpec
+	SQL     string
+}
+
+type outputSpec struct {
+	info    *info
+	columns []string
 }
 
 type typeNameToInfo map[string]*info
@@ -159,6 +166,9 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 	var sql bytes.Buffer
 	var n int
 
+	outs := []*outputSpec{}
+	ins := []*inputPart{}
+
 	// Check and expand each query part.
 	for _, part := range pe.queryParts {
 		if p, ok := part.(*inputPart); ok {
@@ -168,6 +178,8 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 			}
 			s := p.toSQL([]string{}, 0)
 			sql.WriteString(s)
+
+			ins = append(ins, p)
 			continue
 		}
 
@@ -179,6 +191,8 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 			s := p.toSQL(outCols, n)
 			n += len(outCols)
 			sql.WriteString(s)
+
+			outs = append(outs, &outputSpec{ti[p.target[0].prefix], tags(outCols)})
 			continue
 		}
 
@@ -187,5 +201,15 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 		sql.WriteString(s)
 	}
 
-	return &PreparedExpr{ParsedExpr: pe, SQL: sql.String()}, nil
+	return &PreparedExpr{inputs: ins, outputs: outs, SQL: sql.String()}, nil
+}
+
+var tablePrefix = regexp.MustCompile(`([a-zA-Z_0-9])+\.`)
+
+func tags(ocs []string) []string {
+	tags := make([]string, len(ocs))
+	for i, oc := range ocs {
+		tags[i] = tablePrefix.ReplaceAllString(oc, "")
+	}
+	return tags
 }
