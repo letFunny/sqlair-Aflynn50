@@ -22,7 +22,52 @@ func (re *ResultExpr) One(args ...any) error {
 	return nil
 }
 
-func (re *ResultExpr) All(args ...any) error {
+// For now this assumes you have a single struct as output.
+// And that we pass an empty slice.
+func (re *ResultExpr) All(s any) error {
+	if s == nil {
+		return fmt.Errorf("cannot reflect nil value")
+	}
+
+	sv := reflect.ValueOf(s)
+
+	if sv.Kind() != reflect.Pointer {
+		return fmt.Errorf("not a pointer")
+	}
+
+	sv = sv.Elem()
+
+	if sv.Kind() != reflect.Slice {
+		return fmt.Errorf("cannot populate none slice type")
+	}
+
+	// Get element type of slice
+	et := sv.Type().Elem()
+
+	// Create a copy to avoid using value.Set every loop.
+	svCopy := sv
+
+	for {
+		rp := reflect.New(et)
+
+		r := rp.Elem()
+
+		ok, err := re.Next()
+		if err != nil {
+			return err
+		} else if !ok {
+			break
+		}
+
+		err = re.Decode(&r)
+		if err != nil {
+			return err
+		}
+		svCopy = reflect.Append(svCopy, r)
+	}
+	sv.Set(svCopy)
+
+	re.Close()
 	return nil
 }
 
@@ -74,11 +119,23 @@ func (re *ResultExpr) Decode(args ...any) (err error) {
 	for j, out := range re.outputs {
 		arg := args[j]
 		if arg == nil {
-			return fmt.Errorf("cannot reflect nil value")
+			return fmt.Errorf("nil parameter")
 		}
 
-		a := reflect.ValueOf(arg)
-		a = reflect.Indirect(a)
+		var a reflect.Value
+
+		// Check if we have already been given a reflected value. This makes
+		// All() much more efficient.
+		if ap, ok := arg.(*reflect.Value); ok {
+			a = *ap
+		} else {
+			a = reflect.ValueOf(arg)
+			if a.Kind() != reflect.Pointer {
+				return fmt.Errorf("none pointer paramter")
+			}
+			a = reflect.Indirect(a)
+		}
+
 		at := a.Type()
 
 		if out.info.structType != at {

@@ -154,3 +154,52 @@ func (s *PackageSuite) TestDecode(c *C) {
 		c.Fatal(err)
 	}
 }
+
+func (s *PackageSuite) TestAll(c *C) {
+	var tests = []struct {
+		summery  string
+		query    string
+		types    []any
+		inputs   []any
+		expected []any
+	}{{
+		summery:  "simple select person",
+		query:    "SELECT * AS &Person.* FROM person",
+		types:    []any{Person{}},
+		inputs:   []any{},
+		expected: []any{Person{30, "Fred", "1000"}, Person{20, "Mark", "1500"}, Person{0, "Mary", "3500"}, Person{35, "James", ""}},
+	}}
+
+	drop, db, err := personAndAddressDB()
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	for _, t := range tests {
+		pe, err := expr.ParseAndPrepare(t.query, t.types...)
+		if err != nil {
+			c.Error(err)
+			continue
+		}
+		re, err := pe.Exec(db)
+		if err != nil {
+			c.Error(err)
+			continue
+		}
+		var people = []Person{}
+		err = re.All(&people)
+		if err != nil {
+			c.Error(err)
+			continue
+		}
+
+		for i, e := range t.expected {
+			c.Assert(people[i], DeepEquals, e)
+		}
+	}
+
+	_, err = db.Exec(drop)
+	if err != nil {
+		c.Fatal(err)
+	}
+}
