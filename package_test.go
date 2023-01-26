@@ -203,3 +203,53 @@ func (s *PackageSuite) TestAll(c *C) {
 		c.Fatal(err)
 	}
 }
+
+func (s *PackageSuite) TestAllV2(c *C) {
+	var tests = []struct {
+		summery  string
+		query    string
+		types    []any
+		inputs   []any
+		expected [][]any
+	}{{
+		summery:  "double select with name clash",
+		query:    "SELECT p.id AS &Person.*, a.id AS &Address.* FROM person AS p, address AS a",
+		types:    []any{Person{}, Address{}},
+		inputs:   []any{},
+		expected: [][]any{{Person{ID: 30}, Address{ID: 25}}, {Person{ID: 30}, Address{ID: 30}}, {Person{ID: 30}, Address{ID: 10}}, {Person{ID: 20}, Address{ID: 25}}},
+	}}
+
+	drop, db, err := personAndAddressDB()
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	for _, t := range tests {
+		pe, err := expr.ParseAndPrepare(t.query, t.types...)
+		if err != nil {
+			c.Error(err)
+			continue
+		}
+		re, err := pe.Exec(db)
+		if err != nil {
+			c.Error(err)
+			continue
+		}
+		res, err := re.AllV2()
+		if err != nil {
+			c.Error(err)
+			continue
+		}
+
+		for i, es := range t.expected {
+			for j, e := range es {
+				c.Assert(res[i][j], DeepEquals, e)
+			}
+		}
+	}
+
+	_, err = db.Exec(drop)
+	if err != nil {
+		c.Fatal(err)
+	}
+}

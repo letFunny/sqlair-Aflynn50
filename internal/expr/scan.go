@@ -24,6 +24,9 @@ func (re *ResultExpr) One(args ...any) error {
 
 // For now this assumes you have a single struct as output.
 // And that we pass an empty slice.
+// This version of all gets the type from the slice, but this can only ever work
+// with query returning one type (because we cant mix types in the slice.
+
 func (re *ResultExpr) All(s any) error {
 	if s == nil {
 		return fmt.Errorf("cannot reflect nil value")
@@ -69,6 +72,55 @@ func (re *ResultExpr) All(s any) error {
 
 	re.Close()
 	return nil
+}
+
+// This version returns a slice rather than populating one
+func (re *ResultExpr) AllV2() ([][]any, error) {
+	var s [][]any
+	var ts []reflect.Type
+	// var ts = make([]reflect.Type, len(re.outputs))
+	for _, os := range re.outputs {
+		ts = append(ts, os.info.structType)
+	}
+
+	for {
+		ok, err := re.Next()
+		if err != nil {
+			return [][]any{}, err
+		} else if !ok {
+			break
+		}
+
+		rs := []any{}
+		rps := []any{}
+		for _, t := range ts {
+			rp := reflect.New(t)
+			// We could leave this as a reflected value to avoid reflecting
+			// again in decode.
+			// r is an any value continaing a struct
+			r := rp.Elem()
+			//return nil, fmt.Errorf("can set: %v can addr: %v, its type is %T", reflect.ValueOf(&r).CanSet(), reflect.ValueOf(&r).CanAddr(), r)
+			rs = append(rs, r)
+			rps = append(rps, &r)
+		}
+
+		//return nil, fmt.Errorf("can set: %v can addr: %v", reflect.ValueOf(rps[0]).CanSet(), reflect.ValueOf(rps[0]).CanAddr())
+		//return nil, fmt.Errorf("rps is %#v", rps)
+		err = re.Decode(rps...)
+		if err != nil {
+			return [][]any{}, err
+		}
+
+		rips := []any{}
+		for _, r := range rs {
+			rip := r.(reflect.Value).Interface()
+			rips = append(rips, rip)
+		}
+		s = append(s, rips)
+	}
+
+	re.Close()
+	return s, nil
 }
 
 func (re *ResultExpr) Next(args ...any) (bool, error) {
@@ -124,6 +176,12 @@ func (re *ResultExpr) Decode(args ...any) (err error) {
 
 		var a reflect.Value
 
+		// 		// We need this if we are given something hiding behind an
+		// 		// interface
+		// 		if a.Kind() == reflect.Interface {
+		// 			a = a.Elem()
+		// 		}
+
 		// Check if we have already been given a reflected value. This makes
 		// All() much more efficient.
 		if ap, ok := arg.(*reflect.Value); ok {
@@ -139,7 +197,7 @@ func (re *ResultExpr) Decode(args ...any) (err error) {
 		at := a.Type()
 
 		if out.info.structType != at {
-			return fmt.Errorf(`output expression of type "%s" but argument of type "%s"`, out.info.structType.Name(), at.Name())
+			return fmt.Errorf("output expression of type %#v but argument of type %#v", out.info.structType.Name(), at.Name())
 		}
 
 		for _, c := range out.columns {
@@ -176,7 +234,7 @@ func setValue(a reflect.Value, f field, res any) error {
 	}
 	af := a.Field(f.index)
 	if !af.CanSet() {
-		return fmt.Errorf("field %#v is not exported", f.name)
+		return fmt.Errorf("cannot set field %#v. CanAddr=%v", f.name, af.CanAddr())
 	}
 	af.Set(v)
 	return nil
