@@ -12,8 +12,9 @@ type ResultExpr struct {
 	vals    *[]any
 }
 
-func (pe *PreparedExpr) Exec(db *sql.DB, args ...any) (*ResultExpr, error) {
-	inputArgs, err := complete(pe.inputs, args)
+// How does Joe want this to look?
+func (pe *PreparedExpr) Query(db *sql.DB, args ...any) (*ResultExpr, error) {
+	inputArgs, err := pe.Complete(args...)
 	if err != nil {
 		return nil, fmt.Errorf("argument error: %s", err)
 	}
@@ -30,7 +31,7 @@ func (pe *PreparedExpr) Exec(db *sql.DB, args ...any) (*ResultExpr, error) {
 type typeNameToValue = map[string]any
 
 // Complete extracts query arguments specified in inputParts from structs.
-func complete(ins []*inputPart, args ...any) ([]any, error) {
+func (pe *PreparedExpr) Complete(args ...any) ([]any, error) {
 	var tv = make(typeNameToValue)
 	for _, arg := range args {
 		if arg == (any)(nil) {
@@ -42,7 +43,7 @@ func complete(ins []*inputPart, args ...any) ([]any, error) {
 	// Query parameteres.
 	qargs := []any{}
 
-	for _, p := range ins {
+	for _, p := range pe.inputs {
 		v, ok := tv[p.source.prefix]
 		if !ok {
 			return nil, fmt.Errorf(`type %#v not passed as a parameter`, p.source.prefix)
