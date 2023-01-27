@@ -48,11 +48,50 @@ var tests = []struct {
 	[]any{Person{}},
 	"SELECT p.address_id AS [a-zA-Z_0-9]+, p.id AS [a-zA-Z_0-9]+, p.name AS [a-zA-Z_0-9]+",
 }, {
+	"spaces and tabs",
+	"SELECT p.* 	AS 		   &Person.*",
+	"[Bypass[SELECT ] Output[[p.*] [Person.*]]]",
+	[]any{Person{}},
+	"SELECT p.address_id AS [a-zA-Z_0-9]+, p.id AS [a-zA-Z_0-9]+, p.name AS [a-zA-Z_0-9]+",
+}, {
+	"new lines",
+	`SELECT
+		p.* AS &Person.*,
+		foo
+	 FROM t
+	 WHERE
+		foo = bar
+		and
+		x = y`,
+	`[Bypass[SELECT
+		] Output[[p.*] [Person.*]] Bypass[,
+		foo
+	 FROM t
+	 WHERE
+		foo = bar
+		and
+		x = y]]`,
+	[]any{Person{}},
+	`SELECT
+		p.address_id AS [a-zA-Z_0-9]+, p.id AS [a-zA-Z_0-9]+, p.name AS [a-zA-Z_0-9]+,
+		foo
+	 FROM t
+	 WHERE
+		foo = bar
+		and
+		x = y`,
+}, {
 	"quoted output expression",
 	"SELECT p.* AS &Person.*, '&notAnOutputExpresion.*' AS literal FROM t",
-	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Bypass['&notAnOutputExpresion.*'] Bypass[ AS literal FROM t]]",
+	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, '&notAnOutputExpresion.*' AS literal FROM t]]",
 	[]any{Person{}},
 	"SELECT p.address_id AS [a-zA-Z_0-9]+, p.id AS [a-zA-Z_0-9]+, p.name AS [a-zA-Z_0-9]+, '&notAnOutputExpresion.*' AS literal FROM t",
+}, {
+	"quoted input expression",
+	"SELECT foo FROM t WHERE bar = '$NotAn.input'",
+	"[Bypass[SELECT foo FROM t WHERE bar = '$NotAn.input']]",
+	[]any{},
+	`SELECT foo FROM t WHERE bar = '\$NotAn\.input'`,
 }, {
 	"star as output",
 	"SELECT * AS &Person.* FROM t",
@@ -86,31 +125,31 @@ var tests = []struct {
 }, {
 	"output and quote",
 	"SELECT foo, bar, &Person.id FROM table WHERE foo = 'xx'",
-	"[Bypass[SELECT foo, bar, ] Output[[] [Person.id]] Bypass[ FROM table WHERE foo = ] Bypass['xx']]",
+	"[Bypass[SELECT foo, bar, ] Output[[] [Person.id]] Bypass[ FROM table WHERE foo = 'xx']]",
 	[]any{Person{}},
 	"SELECT foo, bar, id AS [a-zA-Z_0-9]+ FROM table WHERE foo = 'xx'",
 }, {
 	"two outputs and quote",
 	"SELECT foo, &Person.id, bar, baz, &Manager.manager_name FROM table WHERE foo = 'xx'",
-	"[Bypass[SELECT foo, ] Output[[] [Person.id]] Bypass[, bar, baz, ] Output[[] [Manager.manager_name]] Bypass[ FROM table WHERE foo = ] Bypass['xx']]",
+	"[Bypass[SELECT foo, ] Output[[] [Person.id]] Bypass[, bar, baz, ] Output[[] [Manager.manager_name]] Bypass[ FROM table WHERE foo = 'xx']]",
 	[]any{Person{}, Manager{}},
 	"SELECT foo, id AS [a-zA-Z_0-9]+, bar, baz, manager_name AS [a-zA-Z_0-9]+ FROM table WHERE foo = 'xx'",
 }, {
 	"star as output and quote",
 	"SELECT * AS &Person.* FROM person WHERE name = 'Fred'",
-	"[Bypass[SELECT ] Output[[*] [Person.*]] Bypass[ FROM person WHERE name = ] Bypass['Fred']]",
+	"[Bypass[SELECT ] Output[[*] [Person.*]] Bypass[ FROM person WHERE name = 'Fred']]",
 	[]any{Person{}},
 	"SELECT address_id AS [a-zA-Z_0-9]+, id AS [a-zA-Z_0-9]+, name AS [a-zA-Z_0-9]+ FROM person WHERE name = 'Fred'",
 }, {
 	"star output and quote",
 	"SELECT &Person.* FROM person WHERE name = 'Fred'",
-	"[Bypass[SELECT ] Output[[] [Person.*]] Bypass[ FROM person WHERE name = ] Bypass['Fred']]",
+	"[Bypass[SELECT ] Output[[] [Person.*]] Bypass[ FROM person WHERE name = 'Fred']]",
 	[]any{Person{}},
 	"SELECT address_id AS [a-zA-Z_0-9]+, id AS [a-zA-Z_0-9]+, name AS [a-zA-Z_0-9]+ FROM person WHERE name = 'Fred'",
 }, {
 	"two star as outputs and quote",
 	"SELECT * AS &Person.*, a.* AS &Address.* FROM person, address a WHERE name = 'Fred'",
-	"[Bypass[SELECT ] Output[[*] [Person.*]] Bypass[, ] Output[[a.*] [Address.*]] Bypass[ FROM person, address a WHERE name = ] Bypass['Fred']]",
+	"[Bypass[SELECT ] Output[[*] [Person.*]] Bypass[, ] Output[[a.*] [Address.*]] Bypass[ FROM person, address a WHERE name = 'Fred']]",
 	[]any{Person{}, Address{}},
 	"SELECT address_id AS [a-zA-Z_0-9]+, id AS [a-zA-Z_0-9]+, name AS [a-zA-Z_0-9]+, a.district AS [a-zA-Z_0-9]+, a.id AS [a-zA-Z_0-9]+, a.street AS [a-zA-Z_0-9]+ FROM person, address a WHERE name = 'Fred'",
 }, {
@@ -134,25 +173,25 @@ var tests = []struct {
 }, {
 	"multicolumn output v4",
 	"SELECT (a.district, a.street) AS &Address.* FROM address AS a WHERE p.name = 'Fred'",
-	"[Bypass[SELECT ] Output[[a.district a.street] [Address.*]] Bypass[ FROM address AS a WHERE p.name = ] Bypass['Fred']]",
+	"[Bypass[SELECT ] Output[[a.district a.street] [Address.*]] Bypass[ FROM address AS a WHERE p.name = 'Fred']]",
 	[]any{Address{}},
 	"SELECT a.district AS [a-zA-Z_0-9]+, a.street AS [a-zA-Z_0-9]+ FROM address AS a WHERE p.name = 'Fred'",
 }, {
 	"quote",
 	"SELECT 1 FROM person WHERE p.name = 'Fred'",
-	"[Bypass[SELECT 1 FROM person WHERE p.name = ] Bypass['Fred']]",
+	"[Bypass[SELECT 1 FROM person WHERE p.name = 'Fred']]",
 	[]any{},
 	"SELECT 1 FROM person WHERE p.name = 'Fred'",
 }, {
 	"complex query v1",
 	"SELECT p.* AS &Person.*, (a.district, a.street) AS &Address.*, (5+7), (col1 * col2) AS calculated_value FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = 'Fred'",
-	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[a.district a.street] [Address.*]] Bypass[, (5+7), (col1 * col2) AS calculated_value FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = ] Bypass['Fred']]",
+	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[a.district a.street] [Address.*]] Bypass[, (5+7), (col1 * col2) AS calculated_value FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = 'Fred']]",
 	[]any{Person{}, Address{}},
 	`SELECT p.address_id AS [a-zA-Z_0-9]+, p.id AS [a-zA-Z_0-9]+, p.name AS [a-zA-Z_0-9]+, a.district AS [a-zA-Z_0-9]+, a.street AS [a-zA-Z_0-9]+, \(5\+7\), \(col1 \* col2\) AS calculated_value FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = 'Fred'`,
 }, {
 	"complex query v2",
 	"SELECT p.* AS &Person.*, (a.district, a.street) AS &Address.* FROM person AS p JOIN address AS a ON p .address_id = a.id WHERE p.name = 'Fred'",
-	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[a.district a.street] [Address.*]] Bypass[ FROM person AS p JOIN address AS a ON p .address_id = a.id WHERE p.name = ] Bypass['Fred']]",
+	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[a.district a.street] [Address.*]] Bypass[ FROM person AS p JOIN address AS a ON p .address_id = a.id WHERE p.name = 'Fred']]",
 	[]any{Person{}, Address{}},
 	"SELECT p.address_id AS [a-zA-Z_0-9]+, p.id AS [a-zA-Z_0-9]+, p.name AS [a-zA-Z_0-9]+, a.district AS [a-zA-Z_0-9]+, a.street AS [a-zA-Z_0-9]+ FROM person AS p JOIN address AS a ON p .address_id = a.id WHERE p.name = 'Fred'",
 }, {
@@ -182,13 +221,13 @@ var tests = []struct {
 }, {
 	"join v1",
 	"SELECT p.* AS &Person.*, m.* AS &Manager.* FROM person AS p JOIN person AS m ON p.manager_id = m.id WHERE p.name = 'Fred'",
-	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[m.*] [Manager.*]] Bypass[ FROM person AS p JOIN person AS m ON p.manager_id = m.id WHERE p.name = ] Bypass['Fred']]",
+	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[m.*] [Manager.*]] Bypass[ FROM person AS p JOIN person AS m ON p.manager_id = m.id WHERE p.name = 'Fred']]",
 	[]any{Person{}, Manager{}},
 	"SELECT p.address_id AS [a-zA-Z_0-9]+, p.id AS [a-zA-Z_0-9]+, p.name AS [a-zA-Z_0-9]+, m.manager_name AS [a-zA-Z_0-9]+ FROM person AS p JOIN person AS m ON p.manager_id = m.id WHERE p.name = 'Fred'",
 }, {
 	"join v2",
 	"SELECT person.*, address.district FROM person JOIN address ON person.address_id = address.id WHERE person.name = 'Fred'",
-	"[Bypass[SELECT person.*, address.district FROM person JOIN address ON person.address_id = address.id WHERE person.name = ] Bypass['Fred']]",
+	"[Bypass[SELECT person.*, address.district FROM person JOIN address ON person.address_id = address.id WHERE person.name = 'Fred']]",
 	[]any{},
 	"SELECT person.*, address.district FROM person JOIN address ON person.address_id = address.id WHERE person.name = 'Fred'",
 }, {
@@ -224,19 +263,19 @@ var tests = []struct {
 }, {
 	"escaped double quote",
 	`SELECT foo FROM t WHERE t.p = "Jimmy ""Quickfingers"" Jones"`,
-	`[Bypass[SELECT foo FROM t WHERE t.p = ] Bypass["Jimmy ""Quickfingers"" Jones"]]`,
+	`[Bypass[SELECT foo FROM t WHERE t.p = "Jimmy ""Quickfingers"" Jones"]]`,
 	[]any{},
 	`SELECT foo FROM t WHERE t.p = "Jimmy ""Quickfingers"" Jones"`,
 }, {
 	"escaped single quote",
 	`SELECT foo FROM t WHERE t.p = 'Olly O''Flanagan'`,
-	`[Bypass[SELECT foo FROM t WHERE t.p = ] Bypass['Olly O''Flanagan']]`,
+	`[Bypass[SELECT foo FROM t WHERE t.p = 'Olly O''Flanagan']]`,
 	[]any{},
 	`SELECT foo FROM t WHERE t.p = 'Olly O''Flanagan'`,
 }, {
 	"complex escaped quotes",
 	`SELECT * AS &Person.* FROM person WHERE name IN ('Lorn', 'Onos T''oolan', '', ''' ''');`,
-	`[Bypass[SELECT ] Output[[*] [Person.*]] Bypass[ FROM person WHERE name IN (] Bypass['Lorn'] Bypass[, ] Bypass['Onos T''oolan'] Bypass[, ] Bypass[''] Bypass[, ] Bypass[''' '''] Bypass[);]]`,
+	`[Bypass[SELECT ] Output[[*] [Person.*]] Bypass[ FROM person WHERE name IN ('Lorn', 'Onos T''oolan', '', ''' ''');]]`,
 	[]any{Person{}},
 	`SELECT address_id AS [a-zA-Z_0-9]+, id AS [a-zA-Z_0-9]+, name AS [a-zA-Z_0-9]+ FROM person WHERE name IN \('Lorn', 'Onos T''oolan', '', ''' '''\);`,
 }, {
@@ -270,6 +309,27 @@ func (s *ExprSuite) TestRound(c *C) {
 	}
 }
 
+func (s *ExprSuite) TestValidInput(c *C) {
+	testList := []struct {
+		input          string
+		expectedParsed string
+	}{{
+		"SELECT street FROM t WHERE x = $Address.street",
+		"[Bypass[SELECT street FROM t WHERE x = ] Input[Address.street]]",
+	}, {
+		"SELECT p FROM t WHERE x = $Person.id",
+		"[Bypass[SELECT p FROM t WHERE x = ] Input[Person.id]]",
+	}}
+	for _, test := range testList {
+		parser := expr.NewParser()
+		parsedExpr, err := parser.Parse(test.input)
+		if err != nil {
+			c.Fatal(err)
+		}
+		c.Assert(parsedExpr.String(), Equals, test.expectedParsed)
+	}
+}
+
 // We return a proper error when we find an unbound string literal
 func (s *ExprSuite) TestParseUnfinishedStringLiteral(c *C) {
 	testList := []string{
@@ -280,19 +340,15 @@ func (s *ExprSuite) TestParseUnfinishedStringLiteral(c *C) {
 		`SELECT foo FROM t WHERE x = '''""`,
 		`SELECT foo FROM t WHERE x = """`,
 		`SELECT foo FROM t WHERE x = """''`,
+		`SELECT foo FROM t WHERE x = 'O'Donnell'`,
 	}
 
 	for _, sql := range testList {
 		parser := expr.NewParser()
 		expr, err := parser.Parse(sql)
-		c.Assert(err, ErrorMatches, "cannot parse expression: column 28: missing right quote in string literal")
+		c.Assert(err, ErrorMatches, "cannot parse expression: column [0-9]+: missing closing quote in string literal")
 		c.Assert(expr, IsNil)
 	}
-
-	sql := "SELECT foo FROM t WHERE x = 'O'Donnell'"
-	parser := expr.NewParser()
-	_, err := parser.Parse(sql)
-	c.Assert(err, ErrorMatches, "cannot parse expression: column 38: missing right quote in string literal")
 }
 
 // Properly parsing empty string literal
@@ -329,14 +385,14 @@ func (s *ExprSuite) TestParseBadFormatInput(c *C) {
 	for _, sql := range testList {
 		parser := expr.NewParser()
 		expr, err := parser.Parse(sql)
-		c.Assert(err, ErrorMatches, "cannot parse expression: column 37: invalid identifier")
+		c.Assert(err, ErrorMatches, "cannot parse expression: column [0-9]+: invalid identifier")
 		c.Assert(expr, IsNil)
 	}
 
 	sql := "SELECT foo FROM t WHERE x = $Address"
 	parser := expr.NewParser()
 	_, err := parser.Parse(sql)
-	c.Assert(err, ErrorMatches, "cannot parse expression: column 36: type not qualified")
+	c.Assert(err, ErrorMatches, "cannot parse expression: column [0-9]+: type not qualified")
 }
 
 func FuzzParser(f *testing.F) {
@@ -402,9 +458,10 @@ func (s *ExprSuite) TestPrepareMismatchedStructName(c *C) {
 			c.Fatal(err)
 		}
 		_, err = parsedExpr.Prepare(test.structs...)
-		c.Assert(err, ErrorMatches, `cannot prepare expression: unknown type: .*`,
+		c.Assert(err, ErrorMatches, `cannot prepare expression: type [a-zA-Z_\.0-9]+ unknown, have: .*`,
 			Commentf("test %d failed:\nsql: '%s'\nstructs: '%+v'", i, test.sql, test.structs))
 	}
+
 }
 
 func (s *ExprSuite) TestPrepareMissingTag(c *C) {
@@ -429,8 +486,9 @@ func (s *ExprSuite) TestPrepareMissingTag(c *C) {
 			c.Fatal(err)
 		}
 		_, err = parsedExpr.Prepare(test.structs...)
-		c.Assert(err, ErrorMatches, `cannot prepare expression: no tag with name .*`,
+		c.Assert(err, ErrorMatches, `cannot prepare expression: type [a-zA-Z_\.0-9]+ has no "[a-zA-Z_\.0-9]+" db tag`,
 			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
+
 	}
 }
 
@@ -439,7 +497,7 @@ func (s *ExprSuite) TestPrepareInvalidAsteriskPlacement(c *C) {
 		sql     string
 		structs []any
 	}{{
-		sql:     "SELECT (&Address.*, &Person.*) FROM t",
+		sql:     "SELECT (&Person.*, &Person.*) FROM t",
 		structs: []any{Address{}, Person{}},
 	}, {
 		sql:     "SELECT (p.*, t.*) AS &Address.* FROM t",
@@ -461,18 +519,42 @@ func (s *ExprSuite) TestPrepareInvalidAsteriskPlacement(c *C) {
 	}
 }
 
+func (s *ExprSuite) TestPrepareMixedTypes(c *C) {
+	testList := []struct {
+		sql     string
+		structs []any
+	}{{
+		sql:     "SELECT (&Address.street, &Person.id) FROM t",
+		structs: []any{Address{}, Person{}},
+	}, {
+		sql:     "SELECT (name, p.id) AS (&Person.id, &Address.id) FROM t",
+		structs: []any{Address{}, Person{}},
+	}}
+
+	for i, test := range testList {
+		parser := expr.NewParser()
+		parsedExpr, err := parser.Parse(test.sql)
+		if err != nil {
+			c.Fatal(err)
+		}
+		_, err = parsedExpr.Prepare(test.structs...)
+		c.Assert(err, ErrorMatches, "cannot prepare expression: multiple types in single output expression",
+			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
+	}
+}
+
 func (s *ExprSuite) TestPrepareAsteriskMix(c *C) {
 	testList := []struct {
 		sql     string
 		structs []any
 	}{{
-		sql:     "SELECT (&Address.*, &Person.id) FROM t",
+		sql:     "SELECT (&Address.*, &Address.id) FROM t",
 		structs: []any{Address{}, Person{}},
 	}, {
 		sql:     "SELECT (p.*, t.name) AS &Address.* FROM t",
 		structs: []any{Address{}},
 	}, {
-		sql:     "SELECT (name, p.*) AS (&Address.street, &Person.*) FROM t",
+		sql:     "SELECT (name, p.*) AS (&Person.id, &Person.*) FROM t",
 		structs: []any{Address{}, Person{}},
 	}}
 

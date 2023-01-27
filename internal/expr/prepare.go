@@ -5,32 +5,44 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 )
 
 // PreparedExpr contains an SQL expression that is ready for execution.
 type PreparedExpr struct {
-	inputs  []*inputPart
-	outputs []*outputSpec
-	SQL     string
+	outs   []*outputInfo
+	inputs []*inputPart
+	SQL    string
 }
 
-type outputSpec struct {
+type outputInfo struct {
 	info    *info
 	columns []string
 }
 
 type typeNameToInfo map[string]*info
 
+func getKeys(m map[string]*info) []string {
+	i := 0
+	keys := make([]string, len(m))
+	for k := range m {
+		keys[i] = k
+		i++
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // prepareInput checks that the input expression corresponds to a known type.
 func prepareInput(ti typeNameToInfo, p *inputPart) error {
-	inf, ok := ti[p.source.prefix]
+	info, ok := ti[p.source.prefix]
 	if !ok {
-		return fmt.Errorf(`unknown type: "%s"`, p.source.prefix)
+		return fmt.Errorf(`type %s unknown, have: %s`, p.source.prefix, strings.Join(getKeys(ti), ", "))
 	}
 
-	if _, ok = inf.tagToField[p.source.name]; !ok {
-		return fmt.Errorf(`no tag with name "%s" in "%s"`,
-			p.source.name, inf.structType.Name())
+	if _, ok = info.tagToField[p.source.name]; !ok {
+		return fmt.Errorf(`type %s has no %q db tag`,
+			info.structType.Name(), p.source.name)
 	}
 
 	return nil
@@ -46,20 +58,27 @@ func starCount(fns []fullName) int {
 	return s
 }
 
-func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
+func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, error) {
 
-	var outCols []string = make([]string, 0)
+	var outCols []fullName = make([]fullName, 0)
 
 	// Check target struct type and its tags are valid.
-	for _, t := range p.target {
-		inf, ok := ti[t.prefix]
-		if !ok {
-			return nil, fmt.Errorf("unknown type: %s", t.prefix)
+	var info *info
+	var ok bool
+
+	for i, t := range p.target {
+		if i == 0 {
+			info, ok = ti[t.prefix]
+			if !ok {
+				return nil, fmt.Errorf(`type %s unknown, have: %s`, t.prefix, strings.Join(getKeys(ti), ", "))
+			}
+		} else if t.prefix != info.structType.Name() {
+			return nil, fmt.Errorf("multiple types in single output expression")
 		}
 
-		_, ok = inf.tagToField[t.name]
+		_, ok = info.tagToField[t.name]
 		if !ok && t.name != "*" {
-			return nil, fmt.Errorf(`no tag with name "%s" in "%s"`, t.name, inf.structType.Name())
+			return nil, fmt.Errorf(`type %s has no %q db tag`, info.structType.Name(), t.name)
 		}
 	}
 
@@ -88,35 +107,34 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 
 	// Case 1: Star target cases e.g. "...&P.*".
 	if starTarget {
-		inf, _ := ti[p.target[0].prefix]
+		info, _ := ti[p.target[0].prefix]
 
 		// Case 1.1: Single star e.g. "t.* AS &P.*" or "&P.*"
 		if starSource || numSources == 0 {
 			pref := ""
 
 			// Prepend table name. E.g. "t" in "t.* AS &P.*".
-			if numSources > 0 && p.source[0].prefix != "" {
-				pref = p.source[0].prefix + "."
+			if numSources > 0 {
+				pref = p.source[0].prefix
 			}
 
-			for tag := range inf.tagToField {
-				outCols = append(outCols, pref+tag)
+			for tag := range info.tagToField {
+				outCols = append(outCols, fullName{pref, tag})
 			}
 
 			// The strings are sorted to give a deterministic order for
 			// testing.
-			sort.Strings(outCols)
+			sort.Slice(outCols, func(i, j int) bool { return outCols[i].String() < outCols[j].String() })
 			return outCols, nil
 		}
 
 		// Case 1.2: Explicit columns e.g. "(col1, t.col2) AS &P.*".
 		if numSources > 0 {
 			for _, c := range p.source {
-				if _, ok := inf.tagToField[c.name]; !ok {
-					return nil, fmt.Errorf(`no tag with name "%s" in "%s"`,
-						c.name, inf.structType.Name())
+				if _, ok := info.tagToField[c.name]; !ok {
+					return nil, fmt.Errorf(`type %s has no %q db tag`, info.structType.Name(), c.name)
 				}
-				outCols = append(outCols, c.String())
+				outCols = append(outCols, c)
 			}
 			return outCols, nil
 		}
@@ -127,19 +145,21 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]string, error) {
 	// Case 2.1: Explicit columns e.g. "name_1 AS P.name".
 	if numSources > 0 {
 		for _, c := range p.source {
-			outCols = append(outCols, c.String())
+			outCols = append(outCols, c)
 		}
 		return outCols, nil
 	}
 
 	// Case 2.2: No columns e.g. "&(P.name, P.id)".
 	for _, t := range p.target {
-		outCols = append(outCols, t.name)
+		outCols = append(outCols, fullName{name: t.name})
 	}
 	return outCols, nil
 }
 
-// Prepare takes a parsed expression and struct instantiations of all the type
+var alphaNum = regexp.MustCompile("[^a-zA-Z0-9]+")
+
+// Prepare takes a parsed expression and struct instantiations of all the types
 // mentioned in it.
 // The IO parts of the statement are checked for validity against the types
 // and expanded if necessary.
@@ -154,62 +174,60 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 
 	// Generate and save reflection info.
 	for _, arg := range args {
-		inf, err := typeInfo(arg)
+		info, err := typeInfo(arg)
 		if err != nil {
 			return nil, err
 		}
-		ti[inf.structType.Name()] = inf
+		ti[info.structType.Name()] = info
 	}
-
-	// Generate unique ids for output parts.
 
 	var sql bytes.Buffer
 	var n int
 
-	outs := []*outputSpec{}
+	outs := []*outputInfo{}
 	ins := []*inputPart{}
 
 	// Check and expand each query part.
 	for _, part := range pe.queryParts {
-		if p, ok := part.(*inputPart); ok {
+		switch p := part.(type) {
+		case *inputPart:
 			err := prepareInput(ti, p)
 			if err != nil {
 				return nil, err
 			}
-			s := p.toSQL([]string{}, 0)
-			sql.WriteString(s)
-
+			sql.WriteString("?")
 			ins = append(ins, p)
-			continue
-		}
-
-		if p, ok := part.(*outputPart); ok {
+		case *outputPart:
 			outCols, err := prepareOutput(ti, p)
 			if err != nil {
 				return nil, err
 			}
-			s := p.toSQL(outCols, n)
-			n += len(outCols)
-			sql.WriteString(s)
+			for i, c := range outCols {
+				sql.WriteString(c.String())
+				sql.WriteString(" AS _sqlair_")
+				sql.WriteString(alphaNum.ReplaceAllString(c.String(), ""))
+				sql.WriteString(fmt.Sprintf("_%d", n))
+				if i != len(outCols)-1 {
+					sql.WriteString(", ")
+				}
+				n++
+			}
+			outs = append(outs, &outputInfo{ti[p.target[0].prefix], tags(outCols)})
 
-			outs = append(outs, &outputSpec{ti[p.target[0].prefix], tags(outCols)})
-			continue
+		case *bypassPart:
+			sql.WriteString(p.chunk)
+		default:
+			return nil, fmt.Errorf("internal error: unknown query part type %T", part)
 		}
-
-		p := part.(*bypassPart)
-		s := p.toSQL([]string{}, 0)
-		sql.WriteString(s)
 	}
 
-	return &PreparedExpr{inputs: ins, outputs: outs, SQL: sql.String()}, nil
+	return &PreparedExpr{inputs: ins, SQL: sql.String()}, nil
 }
 
-var tablePrefix = regexp.MustCompile(`([a-zA-Z_0-9])+\.`)
-
-func tags(ocs []string) []string {
+func tags(ocs []fullName) []string {
 	tags := make([]string, len(ocs))
 	for i, oc := range ocs {
-		tags[i] = tablePrefix.ReplaceAllString(oc, "")
+		tags[i] = oc.name
 	}
 	return tags
 }
