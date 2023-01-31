@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -88,9 +89,9 @@ func (re *ResultExpr) Next() (bool, error) {
 	offset := 0
 
 	for i, col := range cols {
-		a := strings.Split(col, "_")
-		if a[1] == "sqlair" {
-			rs = append(rs, res{a[2], vs[i-offset]})
+		if strings.HasPrefix(col, "_sqlair") && strings.HasSuffix(col, strconv.Itoa(i)) {
+			tag := strings.TrimSuffix(strings.TrimPrefix(col, "_sqlair_"), "_"+strconv.Itoa(i))
+			rs = append(rs, res{tag, vs[i-offset]})
 		} else {
 			offset++
 		}
@@ -145,7 +146,10 @@ func (re *ResultExpr) decodeValue(v reflect.Value) error {
 
 	for i := r.firstCol; i <= r.lastCol; i++ {
 		// f is in the map, we checked in the prepare stage
-		f := info.tagToField[re.rs[i].tag]
+		f, ok := info.tagToField[re.rs[i].tag]
+		if !ok {
+			return fmt.Errorf("corrupted tag in alias %q", re.rs[i].tag)
+		}
 		err := setValue(v, f, re.rs[i].val)
 		if err != nil {
 			return fmt.Errorf("struct %s: %s", info.structType.Name(), err)
