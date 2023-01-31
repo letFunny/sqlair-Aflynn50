@@ -7,9 +7,9 @@ import (
 )
 
 type ResultExpr struct {
-	outputs []*outputSpec
+	outputs typeToCols
 	rows    *sql.Rows
-	vals    *[]any
+	rs      []res
 }
 
 // How does Joe want this to look?

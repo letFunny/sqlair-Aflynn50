@@ -100,19 +100,19 @@ func (s *PackageSuite) TestDecode(c *C) {
 		outputs  [][]any
 		expected [][]any
 	}{{
-		summery:  "simple select person",
-		query:    "SELECT * AS &Person.* FROM person",
-		types:    []any{Person{}},
-		inputs:   []any{},
-		outputs:  [][]any{{&Person{}}, {&Person{}}, {&Person{}}, {&Person{PostalCode: "6000"}}},
-		expected: [][]any{{&Person{30, "Fred", "1000"}}, {&Person{20, "Mark", "1500"}}, {&Person{0, "Mary", "3500"}}, {&Person{35, "James", "6000"}}},
-	}, {
 		summery:  "double select with name clash",
 		query:    "SELECT p.id AS &Person.*, a.id AS &Address.* FROM person AS p, address AS a",
 		types:    []any{Person{}, Address{}},
 		inputs:   []any{},
 		outputs:  [][]any{{&Person{}, &Address{}}, {&Person{}, &Address{}}, {&Person{}, &Address{}}, {&Person{}, &Address{}}},
 		expected: [][]any{{&Person{ID: 30}, &Address{ID: 25}}, {&Person{ID: 30}, &Address{ID: 30}}, {&Person{ID: 30}, &Address{ID: 10}}, {&Person{ID: 20}, &Address{ID: 25}}},
+	}, {
+		summery:  "simple select person",
+		query:    "SELECT * AS &Person.* FROM person",
+		types:    []any{Person{}},
+		inputs:   []any{},
+		outputs:  [][]any{{&Person{}}, {&Person{}}, {&Person{}}, {&Person{PostalCode: "6000"}}},
+		expected: [][]any{{&Person{30, "Fred", "1000"}}, {&Person{20, "Mark", "1500"}}, {&Person{0, "Mary", "3500"}}, {&Person{35, "James", "6000"}}},
 	}}
 
 	drop, db, err := personAndAddressDB()
@@ -126,7 +126,7 @@ func (s *PackageSuite) TestDecode(c *C) {
 			c.Error(err)
 			continue
 		}
-		re, err := pe.Exec(db)
+		re, err := pe.Query(db)
 		if err != nil {
 			c.Error(err)
 			continue
@@ -147,55 +147,6 @@ func (s *PackageSuite) TestDecode(c *C) {
 			}
 		}
 		re.Close()
-	}
-
-	_, err = db.Exec(drop)
-	if err != nil {
-		c.Fatal(err)
-	}
-}
-
-func (s *PackageSuite) TestAll(c *C) {
-	var tests = []struct {
-		summery  string
-		query    string
-		types    []any
-		inputs   []any
-		expected []any
-	}{{
-		summery:  "simple select person",
-		query:    "SELECT * AS &Person.* FROM person",
-		types:    []any{Person{}},
-		inputs:   []any{},
-		expected: []any{Person{30, "Fred", "1000"}, Person{20, "Mark", "1500"}, Person{0, "Mary", "3500"}, Person{35, "James", ""}},
-	}}
-
-	drop, db, err := personAndAddressDB()
-	if err != nil {
-		c.Fatal(err)
-	}
-
-	for _, t := range tests {
-		pe, err := expr.ParseAndPrepare(t.query, t.types...)
-		if err != nil {
-			c.Error(err)
-			continue
-		}
-		re, err := pe.Exec(db)
-		if err != nil {
-			c.Error(err)
-			continue
-		}
-		var people = []Person{}
-		err = re.All(&people)
-		if err != nil {
-			c.Error(err)
-			continue
-		}
-
-		for i, e := range t.expected {
-			c.Assert(people[i], DeepEquals, e)
-		}
 	}
 
 	_, err = db.Exec(drop)
@@ -230,7 +181,7 @@ func (s *PackageSuite) TestAllV2(c *C) {
 			c.Error(err)
 			continue
 		}
-		re, err := pe.Exec(db)
+		re, err := pe.Query(db)
 		if err != nil {
 			c.Error(err)
 			continue

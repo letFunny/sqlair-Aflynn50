@@ -11,11 +11,21 @@ import (
 var cacheMutex sync.RWMutex
 var cache = make(map[reflect.Type]*info)
 
+func typeInfoFromCache(t reflect.Type) (*info, error) {
+	cacheMutex.RLock()
+	info, found := cache[t]
+	cacheMutex.RUnlock()
+	if found {
+		return info, nil
+	}
+	return nil, fmt.Errorf("type %s not seen before", t.Name())
+}
+
 // Reflect will return the info of a given type,
 // generating and caching as required.
 func typeInfo(value any) (*info, error) {
 	if value == (any)(nil) {
-		return nil, fmt.Errorf("cannot reflect nil value")
+		return nil, "", fmt.Errorf("cannot reflect nil value")
 	}
 
 	v := reflect.ValueOf(value)

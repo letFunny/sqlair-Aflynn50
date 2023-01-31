@@ -3,6 +3,7 @@ package expr
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -22,66 +23,23 @@ func (re *ResultExpr) One(args ...any) error {
 	return nil
 }
 
-// For now this assumes you have a single struct as output.
-// And that we pass an empty slice.
-// This version of all gets the type from the slice, but this can only ever work
-// with query returning one type (because we cant mix types in the slice.
-
-func (re *ResultExpr) All(s any) error {
-	if s == nil {
-		return fmt.Errorf("cannot reflect nil value")
+// getTypes returns the types in the order they are in the query
+func getTypes(m typeToCols) []reflect.Type {
+	i := 0
+	keys := make([]reflect.Type, len(m))
+	for k := range m {
+		keys[i] = k
+		i++
 	}
-
-	sv := reflect.ValueOf(s)
-
-	if sv.Kind() != reflect.Pointer {
-		return fmt.Errorf("not a pointer")
-	}
-
-	sv = sv.Elem()
-
-	if sv.Kind() != reflect.Slice {
-		return fmt.Errorf("cannot populate none slice type")
-	}
-
-	// Get element type of slice
-	et := sv.Type().Elem()
-
-	// Create a copy to avoid using value.Set every loop.
-	svCopy := sv
-
-	for {
-		rp := reflect.New(et)
-
-		r := rp.Elem()
-
-		ok, err := re.Next()
-		if err != nil {
-			return err
-		} else if !ok {
-			break
-		}
-
-		err = re.Decode(&r)
-		if err != nil {
-			return err
-		}
-		svCopy = reflect.Append(svCopy, r)
-	}
-	sv.Set(svCopy)
-
-	re.Close()
-	return nil
+	sort.Slice(keys, func(i, j int) bool { return m[keys[i]].firstCol < m[keys[j]].firstCol })
+	return keys
 }
 
 // This version returns a slice rather than populating one
 func (re *ResultExpr) AllV2() ([][]any, error) {
 	var s [][]any
-	var ts []reflect.Type
-	// var ts = make([]reflect.Type, len(re.outputs))
-	for _, os := range re.outputs {
-		ts = append(ts, os.info.structType)
-	}
+
+	ts := getTypes(re.outputs)
 
 	for {
 		ok, err := re.Next()
@@ -92,38 +50,25 @@ func (re *ResultExpr) AllV2() ([][]any, error) {
 		}
 
 		rs := []any{}
-		rps := []any{}
 		for _, t := range ts {
 			rp := reflect.New(t)
-			// We could leave this as a reflected value to avoid reflecting
-			// again in decode.
-			// r is an any value continaing a struct
+			// We need to unwrap the struct inside the interface{}.
 			r := rp.Elem()
-			//return nil, fmt.Errorf("can set: %v can addr: %v, its type is %T", reflect.ValueOf(&r).CanSet(), reflect.ValueOf(&r).CanAddr(), r)
-			rs = append(rs, r)
-			rps = append(rps, &r)
+			err := re.decodeValue(r)
+			if err != nil {
+				return [][]any{}, err
+			}
+			rs = append(rs, r.Interface())
 		}
 
-		//return nil, fmt.Errorf("can set: %v can addr: %v", reflect.ValueOf(rps[0]).CanSet(), reflect.ValueOf(rps[0]).CanAddr())
-		//return nil, fmt.Errorf("rps is %#v", rps)
-		err = re.Decode(rps...)
-		if err != nil {
-			return [][]any{}, err
-		}
-
-		rips := []any{}
-		for _, r := range rs {
-			rip := r.(reflect.Value).Interface()
-			rips = append(rips, rip)
-		}
-		s = append(s, rips)
+		s = append(s, rs)
 	}
 
 	re.Close()
 	return s, nil
 }
 
-func (re *ResultExpr) Next(args ...any) (bool, error) {
+func (re *ResultExpr) Next() (bool, error) {
 	if !re.rows.Next() {
 		return false, nil
 	}
@@ -140,12 +85,17 @@ func (re *ResultExpr) Next(args ...any) (bool, error) {
 	}
 	re.rows.Scan(ptrs...)
 
-	vals := []any{}
+	rs := []res{}
 	offset := 0
 
 	for i, col := range cols {
-		if strings.HasPrefix(col, "_sqlair") && strings.HasSuffix(col, strconv.Itoa(i)) {
-			vals = append(vals, vs[i-offset])
+		a := strings.Split(col, "_")
+		if a[0] == "sqlair" {
+			pos, err := strconv.Atoi(a[2])
+			if err != nil {
+				return false, fmt.Errorf("Invalid sqlair column name: %s", col)
+			}
+			rs = append(rs, res{[1]), pos, vs[i-offset]})
 		} else {
 			offset++
 		}
@@ -166,52 +116,45 @@ func (re *ResultExpr) Decode(args ...any) (err error) {
 		return fmt.Errorf("query has %d outputs but %d objects were provided", len(re.outputs), len(args))
 	}
 
-	i := 0
-
-	for j, out := range re.outputs {
-		arg := args[j]
+	for _, arg := range args {
 		if arg == nil {
 			return fmt.Errorf("nil parameter")
 		}
 
-		var a reflect.Value
-
-		// 		// We need this if we are given something hiding behind an
-		// 		// interface
-		// 		if a.Kind() == reflect.Interface {
-		// 			a = a.Elem()
-		// 		}
-
-		// Check if we have already been given a reflected value. This makes
-		// All() much more efficient.
-		if ap, ok := arg.(*reflect.Value); ok {
-			a = *ap
-		} else {
-			a = reflect.ValueOf(arg)
-			if a.Kind() != reflect.Pointer {
-				return fmt.Errorf("none pointer paramter")
-			}
-			a = reflect.Indirect(a)
+		v := reflect.ValueOf(arg)
+		if v.Kind() != reflect.Pointer {
+			return fmt.Errorf("none pointer paramter")
 		}
+		v = reflect.Indirect(v)
 
-		at := a.Type()
-
-		if out.info.structType != at {
-			return fmt.Errorf("output expression of type %#v but argument of type %#v", out.info.structType.Name(), at.Name())
+		err := re.decodeValue(v)
+		if err != nil {
+			return err
 		}
+	}
+	return nil
+}
 
-		for _, c := range out.columns {
-			f, ok := out.info.tagToField[c]
-			if !ok {
-				return fmt.Errorf("no tag %#v in struct %#v", c, out.info.structType.Name())
-			}
-			err := setValue(a, f, (*re.vals)[i])
-			if err != nil {
-				return fmt.Errorf("struct %#v: %s", out.info.structType.Name(), err)
-			}
-			i++
+// decodeValue sets the fields in the reflected struct "v" which have tags
+// corrosponding to columns in current row of the query results.
+func (re *ResultExpr) decodeValue(v reflect.Value) error {
+	info, err := typeInfoFromCache(v.Type())
+	if err != nil {
+		return err
+	}
+
+	r, ok := re.outputs[info.structType]
+	if !ok {
+		return fmt.Errorf("no output expression of type %s", info.structType.Name())
+	}
+
+	for i := r.firstCol; i <= r.lastCol; i++ {
+		// f is in the map, we checked in the prepare stage
+		f := info.tagToField[re.rs[i].tag]
+		err := setValue(v, f, re.rs[i].val)
+		if err != nil {
+			return fmt.Errorf("struct %s: %s", info.structType.Name(), err)
 		}
-
 	}
 	return nil
 }

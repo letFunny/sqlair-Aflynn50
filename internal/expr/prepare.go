@@ -3,6 +3,7 @@ package expr
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -10,19 +11,21 @@ import (
 
 // PreparedExpr contains an SQL expression that is ready for execution.
 type PreparedExpr struct {
-	outs   []*outputInfo
-	inputs []*inputPart
-	SQL    string
+	outputs typeToCols
+	inputs  []*inputPart
+	SQL     string
 }
 
-type outputInfo struct {
-	info    *info
-	columns []string
+// Maps the output types to the columns they are assosiated with
+type typeToCols map[reflect.Type]numRange
+
+type numRange struct {
+	firstCol int
+	lastCol  int
 }
 
-type typeNameToInfo map[string]*info
-
-func getKeys(m map[string]*info) []string {
+// getKeys returns the keys of a string map in a deterministic order.
+func getKeys[T any](m map[string]T) []string {
 	i := 0
 	keys := make([]string, len(m))
 	for k := range m {
@@ -118,13 +121,10 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, error) {
 				pref = p.source[0].prefix
 			}
 
-			for tag := range info.tagToField {
+			for _, tag := range getKeys(info.tagToField) {
 				outCols = append(outCols, fullName{pref, tag})
 			}
 
-			// The strings are sorted to give a deterministic order for
-			// testing.
-			sort.Slice(outCols, func(i, j int) bool { return outCols[i].String() < outCols[j].String() })
 			return outCols, nil
 		}
 
@@ -159,6 +159,8 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, error) {
 
 var alphaNum = regexp.MustCompile("[^a-zA-Z0-9]+")
 
+type typeNameToInfo map[string]*info
+
 // Prepare takes a parsed expression and struct instantiations of all the types
 // mentioned in it.
 // The IO parts of the statement are checked for validity against the types
@@ -184,8 +186,8 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 	var sql bytes.Buffer
 	var n int
 
-	outs := []*outputInfo{}
-	ins := []*inputPart{}
+	var outs = make(typeToCols)
+	var ins = make([]*inputPart, 0)
 
 	// Check and expand each query part.
 	for _, part := range pe.queryParts {
@@ -202,17 +204,18 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 			if err != nil {
 				return nil, err
 			}
+			startCol := n
 			for i, c := range outCols {
 				sql.WriteString(c.String())
 				sql.WriteString(" AS _sqlair_")
-				sql.WriteString(alphaNum.ReplaceAllString(c.String(), ""))
+				sql.WriteString(c.name)
 				sql.WriteString(fmt.Sprintf("_%d", n))
 				if i != len(outCols)-1 {
 					sql.WriteString(", ")
 				}
 				n++
 			}
-			outs = append(outs, &outputInfo{ti[p.target[0].prefix], tags(outCols)})
+			outs[ti[p.target[0].prefix].structType] = numRange{startCol, n - 1}
 
 		case *bypassPart:
 			sql.WriteString(p.chunk)
@@ -221,13 +224,5 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 		}
 	}
 
-	return &PreparedExpr{inputs: ins, SQL: sql.String()}, nil
-}
-
-func tags(ocs []fullName) []string {
-	tags := make([]string, len(ocs))
-	for i, oc := range ocs {
-		tags[i] = oc.name
-	}
-	return tags
+	return &PreparedExpr{outputs: outs, inputs: ins, SQL: sql.String()}, nil
 }
