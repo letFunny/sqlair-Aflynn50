@@ -25,7 +25,7 @@ func typeInfoFromCache(t reflect.Type) (*info, error) {
 // generating and caching as required.
 func typeInfo(value any) (*info, error) {
 	if value == (any)(nil) {
-		return nil, "", fmt.Errorf("cannot reflect nil value")
+		return nil, fmt.Errorf("cannot reflect nil value")
 	}
 
 	v := reflect.ValueOf(value)

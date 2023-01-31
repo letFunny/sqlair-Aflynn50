@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -90,18 +89,14 @@ func (re *ResultExpr) Next() (bool, error) {
 
 	for i, col := range cols {
 		a := strings.Split(col, "_")
-		if a[0] == "sqlair" {
-			pos, err := strconv.Atoi(a[2])
-			if err != nil {
-				return false, fmt.Errorf("Invalid sqlair column name: %s", col)
-			}
-			rs = append(rs, res{[1]), pos, vs[i-offset]})
+		if a[1] == "sqlair" {
+			rs = append(rs, res{a[2], vs[i-offset]})
 		} else {
 			offset++
 		}
 	}
 
-	re.vals = &vals
+	re.rs = rs
 
 	return true, nil
 }

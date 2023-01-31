@@ -12,6 +12,11 @@ type ResultExpr struct {
 	rs      []res
 }
 
+type res struct {
+	tag string
+	val any
+}
+
 // How does Joe want this to look?
 func (pe *PreparedExpr) Query(db *sql.DB, args ...any) (*ResultExpr, error) {
 	inputArgs, err := pe.Complete(args...)
