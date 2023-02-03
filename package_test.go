@@ -1,4 +1,4 @@
-package sqlair
+package sqlair_test
 
 import (
 	"database/sql"
@@ -6,7 +6,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/canonical/sqlair/internal/expr"
+	"github.com/canonical/sqlair"
 	. "gopkg.in/check.v1"
 )
 
@@ -121,24 +121,24 @@ func (s *PackageSuite) TestDecode(c *C) {
 	}
 
 	for _, t := range tests {
-		pe, err := expr.ParseAndPrepare(t.query, t.types...)
+		stmt, err := sqlair.Prepare(t.query, t.types...)
 		if err != nil {
 			c.Error(err)
 			continue
 		}
-		re, err := pe.Query(db)
+		q, err := stmt.Query(db)
 		if err != nil {
 			c.Error(err)
 			continue
 		}
 		for i, os := range t.outputs {
-			ok, err := re.Next()
+			ok, err := q.Next()
 			if err != nil {
 				c.Fatal(err)
 			} else if !ok {
 				c.Fatal("no more rows in query")
 			}
-			err = re.Decode(os...)
+			err = q.Decode(os...)
 			if err != nil {
 				c.Fatal(err)
 			}
@@ -146,7 +146,7 @@ func (s *PackageSuite) TestDecode(c *C) {
 				c.Assert(o, DeepEquals, t.expected[i][j])
 			}
 		}
-		re.Close()
+		q.Close()
 	}
 
 	_, err = db.Exec(drop)
@@ -155,7 +155,7 @@ func (s *PackageSuite) TestDecode(c *C) {
 	}
 }
 
-func (s *PackageSuite) TestAllV2(c *C) {
+func (s *PackageSuite) TestAll(c *C) {
 	var tests = []struct {
 		summery  string
 		query    string
@@ -182,17 +182,17 @@ func (s *PackageSuite) TestAllV2(c *C) {
 	}
 
 	for _, t := range tests {
-		pe, err := expr.ParseAndPrepare(t.query, t.types...)
+		stmt, err := sqlair.Prepare(t.query, t.types...)
 		if err != nil {
 			c.Error(err)
 			continue
 		}
-		re, err := pe.Query(db)
+		q, err := stmt.Query(db)
 		if err != nil {
 			c.Error(err)
 			continue
 		}
-		res, err := re.AllV2()
+		res, err := q.All()
 		if err != nil {
 			c.Error(err)
 			continue
@@ -283,17 +283,17 @@ AND    l.model_uuid = $JujuLeaseKey.model_uuid`,
 	}
 
 	for _, t := range tests {
-		pe, err := expr.ParseAndPrepare(t.query, t.types...)
+		stmt, err := sqlair.Prepare(t.query, t.types...)
 		if err != nil {
 			c.Error(err)
 			continue
 		}
-		re, err := pe.Query(db, t.inputs...)
+		q, err := stmt.Query(db, t.inputs...)
 		if err != nil {
 			c.Error(err)
 			continue
 		}
-		res, err := re.AllV2()
+		res, err := q.All()
 		if err != nil {
 			c.Error(err)
 			continue

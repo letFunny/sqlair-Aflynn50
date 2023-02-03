@@ -36,7 +36,7 @@ func getTypes(m typeToCols) []reflect.Type {
 }
 
 // This version returns a slice rather than populating one
-func (re *ResultExpr) AllV2() ([][]any, error) {
+func (re *ResultExpr) All() ([][]any, error) {
 	var s [][]any
 
 	ts := getTypes(re.outputs)
