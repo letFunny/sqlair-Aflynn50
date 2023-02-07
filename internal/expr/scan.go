@@ -3,9 +3,7 @@ package expr
 import (
 	"fmt"
 	"reflect"
-	"sort"
 	"strconv"
-	"strings"
 )
 
 func (re *ResultExpr) One(args ...any) error {
@@ -24,15 +22,16 @@ func (re *ResultExpr) One(args ...any) error {
 }
 
 // getTypes returns the types in the order they are in the query
-func getTypes(m typeToCols) []reflect.Type {
-	i := 0
-	keys := make([]reflect.Type, len(m))
-	for k := range m {
-		keys[i] = k
-		i++
+func getTypes(ods []outputDest) []reflect.Type {
+	isDup := make(map[reflect.Type]bool)
+	ts := []reflect.Type{}
+	for _, od := range ods {
+		if t := od.structType; !isDup[t] {
+			isDup[t] = true
+			ts = append(ts, t)
+		}
 	}
-	sort.Slice(keys, func(i, j int) bool { return m[keys[i]].firstCol < m[keys[j]].firstCol })
-	return keys
+	return ts
 }
 
 // This version returns a slice rather than populating one
@@ -85,13 +84,13 @@ func (re *ResultExpr) Next() (bool, error) {
 	}
 	re.rows.Scan(ptrs...)
 
-	rs := []res{}
 	offset := 0
 
+	rs := []any{}
+
 	for i, col := range cols {
-		if strings.HasPrefix(col, "_sqlair") && strings.HasSuffix(col, strconv.Itoa(i)) {
-			tag := strings.TrimSuffix(strings.TrimPrefix(col, "_sqlair_"), "_"+strconv.Itoa(i))
-			rs = append(rs, res{tag, vs[i-offset]})
+		if col == "_sqlair_"+strconv.Itoa(i) {
+			rs = append(rs, vs[i-offset])
 		} else {
 			offset++
 		}
@@ -108,9 +107,6 @@ func (re *ResultExpr) Decode(args ...any) (err error) {
 			err = fmt.Errorf("cannot decode expression: %s", err)
 		}
 	}()
-	if len(args) != len(re.outputs) {
-		return fmt.Errorf("query has %d outputs but %d objects were provided", len(re.outputs), len(args))
-	}
 
 	for _, arg := range args {
 		if arg == nil {
@@ -123,62 +119,54 @@ func (re *ResultExpr) Decode(args ...any) (err error) {
 		}
 		v = reflect.Indirect(v)
 
-		err := re.decodeValue(v)
-		if err != nil {
-			return err
-		}
+		re.decodeValue(v)
+
 	}
+
 	return nil
 }
 
 // decodeValue sets the fields in the reflected struct "v" which have tags
 // corrosponding to columns in current row of the query results.
 func (re *ResultExpr) decodeValue(v reflect.Value) error {
-	info, err := typeInfoFromCache(v.Type())
-	if err != nil {
-		return err
-	}
+	typeFound := false
+	for i, outDest := range re.outputs {
+		if outDest.structType == v.Type() {
+			typeFound = true
+			err := setValue(v, outDest.field, re.rs[i])
+			if err != nil {
+				return fmt.Errorf("struct %s: %s", v.Type().Name(), err)
+			}
 
-	r, ok := re.outputs[info.structType]
-	if !ok {
-		return fmt.Errorf("no output expression of type %s", info.structType.Name())
+		}
 	}
-
-	for i := r.firstCol; i <= r.lastCol; i++ {
-		// f is in the map, we checked in the prepare stage
-		f, ok := info.tagToField[re.rs[i].tag]
-		if !ok {
-			return fmt.Errorf("corrupted tag in alias %q", re.rs[i].tag)
-		}
-		err := setValue(v, f, re.rs[i].val)
-		if err != nil {
-			return fmt.Errorf("struct %s: %s", info.structType.Name(), err)
-		}
+	if !typeFound {
+		return fmt.Errorf("no output expression of type %s", v.Type().Name())
 	}
 	return nil
 }
 
-func setValue(a reflect.Value, f field, res any) error {
+func setValue(dest reflect.Value, fInfo field, val any) error {
 	var isZero bool
 
-	v := reflect.ValueOf(res)
+	v := reflect.ValueOf(val)
 
-	if res == (any)(nil) {
-		if f.omitEmpty {
+	if val == nil {
+		if fInfo.omitEmpty {
 			return nil
 		}
 		isZero = true
-		v = reflect.Zero(f.fieldType)
+		v = reflect.Zero(fInfo.fieldType)
 	}
 
-	if !isZero && v.Type() != f.fieldType {
-		return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), f.name, f.fieldType.Name())
+	if !isZero && v.Type() != fInfo.fieldType {
+		return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), fInfo.name, fInfo.fieldType.Name())
 	}
-	af := a.Field(f.index)
-	if !af.CanSet() {
-		return fmt.Errorf("cannot set field %#v. CanAddr=%v", f.name, af.CanAddr())
+	f := dest.Field(fInfo.index)
+	if !f.CanSet() {
+		return fmt.Errorf("cannot set field %#v. CanAddr=%v", fInfo.name, f.CanAddr())
 	}
-	af.Set(v)
+	f.Set(v)
 	return nil
 }
 

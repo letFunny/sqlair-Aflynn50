@@ -6,9 +6,9 @@ import (
 )
 
 type ResultExpr struct {
-	outputs typeToCols
+	outputs []outputDest
 	rows    *sql.Rows
-	rs      []res
+	rs      []any
 }
 
 type res struct {

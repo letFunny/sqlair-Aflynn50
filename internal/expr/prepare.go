@@ -4,24 +4,21 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
-	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
 // PreparedExpr contains an SQL expression that is ready for execution.
 type PreparedExpr struct {
-	outputs typeToCols
+	outputs []outputDest
 	inputs  []*inputPart
 	SQL     string
 }
 
-// Maps the output types to the columns they are assosiated with
-type typeToCols map[reflect.Type]numRange
-
-type numRange struct {
-	firstCol int
-	lastCol  int
+type outputDest struct {
+	structType reflect.Type
+	field      field
 }
 
 // getKeys returns the keys of a string map in a deterministic order.
@@ -34,6 +31,37 @@ func getKeys[T any](m map[string]T) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func starCount(fns []fullName) int {
+	s := 0
+	for _, fn := range fns {
+		if fn.name == "*" {
+			s++
+		}
+	}
+	return s
+}
+
+// starCheckOutput checks that the statement is well formed with regard to
+// asterisks and the number of sources and targets.
+func starCheckOutput(p *outputPart) error {
+	numSources := len(p.source)
+	numTargets := len(p.target)
+
+	targetStars := starCount(p.target)
+	sourceStars := starCount(p.source)
+	starTarget := targetStars == 1
+	starSource := sourceStars == 1
+
+	if targetStars > 1 || sourceStars > 1 || (sourceStars == 1 && targetStars == 0) ||
+		(starTarget && numTargets > 1) || (starSource && numSources > 1) {
+		return fmt.Errorf("invalid asterisk in output expression: %s", p)
+	}
+	if !starTarget && (numSources > 0 && (numTargets != numSources)) {
+		return fmt.Errorf("mismatched number of cols and targets in output expression: %s", p)
+	}
+	return nil
 }
 
 // prepareInput checks that the input expression corresponds to a known type.
@@ -51,113 +79,94 @@ func prepareInput(ti typeNameToInfo, p *inputPart) error {
 	return nil
 }
 
-func starCount(fns []fullName) int {
-	s := 0
-	for _, fn := range fns {
-		if fn.name == "*" {
-			s++
-		}
+// prepareOutput checks that the output expressions are correspond to a known types.
+// It then checks they are formatted correctly and finally generates the columns for the query.
+func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, []outputDest, error) {
+
+	var outCols = make([]fullName, 0)
+	var outDests = make([]outputDest, 0)
+
+	// Check the asterisk are well formed (if present).
+	if err := starCheckOutput(p); err != nil {
+		return nil, nil, err
 	}
-	return s
-}
-
-func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, error) {
-
-	var outCols []fullName = make([]fullName, 0)
 
 	// Check target struct type and its tags are valid.
 	var info *info
 	var ok bool
 
-	for i, t := range p.target {
-		if i == 0 {
-			info, ok = ti[t.prefix]
+	for _, t := range p.target {
+		info, ok = ti[t.prefix]
+		if !ok {
+			return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, t.prefix, strings.Join(getKeys(ti), ", "))
+		}
+
+		if t.name != "*" {
+			f, ok := info.tagToField[t.name]
 			if !ok {
-				return nil, fmt.Errorf(`type %s unknown, have: %s`, t.prefix, strings.Join(getKeys(ti), ", "))
+				return nil, nil, fmt.Errorf(`type %s has no %q db tag`, info.structType.Name(), t.name)
 			}
-		} else if t.prefix != info.structType.Name() {
-			return nil, fmt.Errorf("multiple types in single output expression")
-		}
+			// For a none star expression we record output destinations here.
+			// For a star expression we fill out the destinations as we generate the columns.
+			outDests = append(outDests, outputDest{info.structType, f})
 
-		_, ok = info.tagToField[t.name]
-		if !ok && t.name != "*" {
-			return nil, fmt.Errorf(`type %s has no %q db tag`, info.structType.Name(), t.name)
 		}
 	}
 
-	// Check asterisk are in correct places.
-
-	sct := starCount(p.target)
-	scc := starCount(p.source)
-
-	if sct > 1 || scc > 1 || (scc == 1 && sct == 0) {
-		return nil, fmt.Errorf("invalid asterisk in output expression")
-	}
-
-	starTarget := sct == 1
-	starSource := scc == 1
-
-	numSources := len(p.source)
-	numTargets := len(p.target)
-
-	if (starTarget && numTargets > 1) || (starSource && numSources > 1) {
-		return nil, fmt.Errorf("invalid mix of asterisk and none asterisk columns in output expression")
-	}
-
-	if !starTarget && (numSources > 0 && (numTargets != numSources)) {
-		return nil, fmt.Errorf("mismatched number of cols and targets in output expression")
-	}
+	// Generate columns to inject into SQL query.
 
 	// Case 1: Star target cases e.g. "...&P.*".
-	if starTarget {
+	if p.target[0].name == "*" {
 		info, _ := ti[p.target[0].prefix]
 
-		// Case 1.1: Single star e.g. "t.* AS &P.*" or "&P.*"
-		if starSource || numSources == 0 {
+		// Case 1.1: Single star i.e. "t.* AS &P.*" or "&P.*"
+		if len(p.source) == 0 || p.source[0].name == "*" {
 			pref := ""
 
 			// Prepend table name. E.g. "t" in "t.* AS &P.*".
-			if numSources > 0 {
+			if len(p.source) > 0 {
 				pref = p.source[0].prefix
 			}
 
-			for _, tag := range getKeys(info.tagToField) {
+			// getKeys also sorts the keys.
+			tags := getKeys(info.tagToField)
+			for _, tag := range tags {
 				outCols = append(outCols, fullName{pref, tag})
+				outDests = append(outDests, outputDest{info.structType, info.tagToField[tag]})
 			}
-
-			return outCols, nil
+			return outCols, outDests, nil
 		}
 
 		// Case 1.2: Explicit columns e.g. "(col1, t.col2) AS &P.*".
-		if numSources > 0 {
+		if len(p.source) > 0 {
 			for _, c := range p.source {
-				if _, ok := info.tagToField[c.name]; !ok {
-					return nil, fmt.Errorf(`type %s has no %q db tag`, info.structType.Name(), c.name)
+				f, ok := info.tagToField[c.name]
+				if !ok {
+					return nil, nil, fmt.Errorf(`type %s has no %q db tag`, info.structType.Name(), c.name)
 				}
 				outCols = append(outCols, c)
+				outDests = append(outDests, outputDest{info.structType, f})
 			}
-			return outCols, nil
+			return outCols, outDests, nil
 		}
 	}
 
-	// Case 2: None star target cases e.g. "...&(P.name, P.id)".
+	// Case 2: None star target cases e.g. "...(&P.name, &P.id)".
 
 	// Case 2.1: Explicit columns e.g. "name_1 AS P.name".
-	if numSources > 0 {
+	if len(p.source) > 0 {
 		for _, c := range p.source {
 			outCols = append(outCols, c)
 		}
-		return outCols, nil
+		return outCols, outDests, nil
 	}
 
-	// Case 2.2: No columns e.g. "&(P.name, P.id)".
+	// Case 2.2: No columns e.g. "(&P.name, &P.id)".
 	for _, t := range p.target {
 		outCols = append(outCols, fullName{name: t.name})
 	}
-	return outCols, nil
+	return outCols, outDests, nil
 }
-
-var alphaNum = regexp.MustCompile("[^a-zA-Z0-9]+")
 
 type typeNameToInfo map[string]*info
 
@@ -186,7 +195,7 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 	var sql bytes.Buffer
 	var n int
 
-	var outs = make(typeToCols)
+	var outputDests = make([]outputDest, 0)
 	var ins = make([]*inputPart, 0)
 
 	// Check and expand each query part.
@@ -200,22 +209,20 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 			sql.WriteString("?")
 			ins = append(ins, p)
 		case *outputPart:
-			outCols, err := prepareOutput(ti, p)
+			outCols, outDests, err := prepareOutput(ti, p)
 			if err != nil {
 				return nil, err
 			}
-			startCol := n
 			for i, c := range outCols {
 				sql.WriteString(c.String())
 				sql.WriteString(" AS _sqlair_")
-				sql.WriteString(c.name)
-				sql.WriteString(fmt.Sprintf("_%d", n))
+				sql.WriteString(strconv.Itoa(n))
 				if i != len(outCols)-1 {
 					sql.WriteString(", ")
 				}
 				n++
 			}
-			outs[ti[p.target[0].prefix].structType] = numRange{startCol, n - 1}
+			outputDests = append(outputDests, outDests...)
 
 		case *bypassPart:
 			sql.WriteString(p.chunk)
@@ -224,5 +231,5 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 		}
 	}
 
-	return &PreparedExpr{outputs: outs, inputs: ins, SQL: sql.String()}, nil
+	return &PreparedExpr{inputs: ins, outputs: outputDests, SQL: sql.String()}, nil
 }

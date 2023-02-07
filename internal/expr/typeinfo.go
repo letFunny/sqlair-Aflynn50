@@ -82,6 +82,7 @@ func generate(value reflect.Value) (*info, error) {
 			fieldType: reflect.TypeOf(value.Field(i).Interface()),
 		}
 		info.fieldToTag[f.Name] = tag
+
 	}
 
 	return &info, nil
