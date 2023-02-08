@@ -53,6 +53,76 @@ func createExampleDB(create string, inserts []string) (*sql.DB, error) {
 	return db, nil
 }
 
+func sqlairPersonAndAddressDB() (string, *sql.DB, error) {
+	create := `
+CREATE TABLE person (
+	name text,
+	id integer,
+	postcode text,
+	email text
+);
+CREATE TABLE address (
+	id integer,
+	district text,
+	street text
+);
+
+`
+	drop := `
+	 drop table person;
+	 drop table address;
+	 `
+	var people = []Person{
+		Person{ID: 30, Fullname: "Fred", PostalCode: "1000"},
+		Person{ID: 20, Fullname: "Mark", PostalCode: "1500"},
+		Person{ID: 0, Fullname: "Mary", PostalCode: "3500"},
+		Person{ID: 35, Fullname: "James", PostalCode: "4500"},
+	}
+
+	var addresses = []Address{
+		Address{ID: 25, District: "Happy Land", Street: "Main Street"},
+		Address{ID: 30, District: "Sad World", Street: "Church Road"},
+		Address{ID: 10, District: "Ambivilent Commons", Street: "Station Lane"},
+	}
+
+	db, err := setupDB()
+	if err != nil {
+		return "", nil, err
+	}
+
+	_, err = db.Exec(create)
+	if err != nil {
+		return "", nil, err
+	}
+
+	var inserts []*sqlair.Statement
+	var args []any
+
+	for _, p := range people {
+		stmt, err := sqlair.Prepare("INSERT INTO person (*) VALUES ($Person.*);", Person{})
+		if err != nil {
+			return "", nil, err
+		}
+		inserts = append(inserts, stmt)
+		args = append(args, p)
+	}
+	for _, a := range addresses {
+		stmt, err := sqlair.Prepare("INSERT INTO address (*) VALUES ($Address.*);", Address{})
+		if err != nil {
+			return "", nil, err
+		}
+		inserts = append(inserts, stmt)
+		args = append(args, a)
+	}
+	for i, s := range inserts {
+		_, err := s.Exec(db, args[i])
+		if err != nil {
+			return "", nil, err
+		}
+	}
+	return drop, db, nil
+}
+
 func personAndAddressDB() (string, *sql.DB, error) {
 	create := `
 CREATE TABLE person (
@@ -77,7 +147,7 @@ CREATE TABLE address (
 		"INSERT INTO person VALUES ('Fred', 30, '1000', 'fred@email.com');",
 		"INSERT INTO person VALUES ('Mark', 20, '1500', 'mark@email.com');",
 		"INSERT INTO person VALUES ('Mary', NULL, '3500', 'mary@email.com');",
-		"INSERT INTO person VALUES ('James', 35, NULL, 'james@email.com');",
+		"INSERT INTO person VALUES ('James', 35, '4500', 'james@email.com');",
 		"INSERT INTO address VALUES (25, 'Happy Land', 'Main Street');",
 		"INSERT INTO address VALUES (30, 'Sad World', 'Church Road');",
 		"INSERT INTO address VALUES (10, 'Ambivilent Commons', 'Station Lane');",
@@ -112,10 +182,10 @@ func (s *PackageSuite) TestDecode(c *C) {
 		types:    []any{Person{}},
 		inputs:   []any{},
 		outputs:  [][]any{{&Person{}}, {&Person{}}, {&Person{}}, {&Person{PostalCode: "6000"}}},
-		expected: [][]any{{&Person{30, "Fred", "1000"}}, {&Person{20, "Mark", "1500"}}, {&Person{0, "Mary", "3500"}}, {&Person{35, "James", "6000"}}},
+		expected: [][]any{{&Person{30, "Fred", "1000"}}, {&Person{20, "Mark", "1500"}}, {&Person{0, "Mary", "3500"}}, {&Person{35, "James", "4500"}}},
 	}}
 
-	drop, db, err := personAndAddressDB()
+	drop, db, err := sqlairPersonAndAddressDB()
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -173,7 +243,7 @@ func (s *PackageSuite) TestAll(c *C) {
 		query:    "SELECT * AS &Person.* FROM person",
 		types:    []any{Person{}},
 		inputs:   []any{},
-		expected: [][]any{{Person{30, "Fred", "1000"}}, {Person{20, "Mark", "1500"}}, {Person{0, "Mary", "3500"}}, {Person{35, "James", ""}}},
+		expected: [][]any{{Person{30, "Fred", "1000"}}, {Person{20, "Mark", "1500"}}, {Person{0, "Mary", "3500"}}, {Person{35, "James", "4500"}}},
 	}}
 
 	drop, db, err := personAndAddressDB()

@@ -6,7 +6,7 @@ import (
 	"github.com/canonical/sqlair/internal/expr"
 )
 
-type Stmt struct {
+type Statement struct {
 	pe *expr.PreparedExpr
 }
 
@@ -14,7 +14,7 @@ type Q struct {
 	re *expr.ResultExpr
 }
 
-func Prepare(input string, args ...any) (*Stmt, error) {
+func Prepare(input string, args ...any) (*Statement, error) {
 	var p = expr.NewParser()
 	parsedExpr, err := p.Parse(input)
 	if err != nil {
@@ -24,18 +24,18 @@ func Prepare(input string, args ...any) (*Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Stmt{pe: preparedExpr}, nil
+	return &Statement{pe: preparedExpr}, nil
 }
 
-func (s *Stmt) SQL() string {
+func (s *Statement) SQL() string {
 	return s.pe.SQL
 }
 
-func (s *Stmt) ExtractArgs(args ...any) ([]any, error) {
+func (s *Statement) ExtractArgs(args ...any) ([]any, error) {
 	return s.pe.Complete(args...)
 }
 
-func (s *Stmt) Query(db *sql.DB, args ...any) (*Q, error) {
+func (s *Statement) Query(db *sql.DB, args ...any) (*Q, error) {
 	re, err := s.pe.Query(db, args...)
 	if err != nil {
 		return nil, err
@@ -43,7 +43,7 @@ func (s *Stmt) Query(db *sql.DB, args ...any) (*Q, error) {
 	return &Q{re: re}, nil
 }
 
-func (s *Stmt) Exec(db *sql.DB, args ...any) (sql.Result, error) {
+func (s *Statement) Exec(db *sql.DB, args ...any) (sql.Result, error) {
 	return s.pe.Exec(db, args...)
 }
 

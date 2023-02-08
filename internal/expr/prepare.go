@@ -63,7 +63,7 @@ func nParams(start int, num int) string {
 	var s bytes.Buffer
 	s.WriteString("(")
 	for i := start; i < start+num; i++ {
-		s.WriteString("@_sqlair_")
+		s.WriteString("@sqlair_")
 		s.WriteString(strconv.Itoa(i))
 		if i < start+num-1 {
 			s.WriteString(", ")
@@ -135,7 +135,7 @@ func prepareInput(ti typeNameToInfo, p *inputPart, n int) (string, []inputLocati
 		if len(p.source) != 1 {
 			return "", nil, fmt.Errorf("internal error: cannot group standalone input expressions")
 		}
-		return "@_sqlair_" + strconv.Itoa(n), inLocs, nil
+		return "@sqlair_" + strconv.Itoa(n), inLocs, nil
 	}
 
 	// Case 2: A VALUES expression (probably inside an INSERT)
@@ -145,7 +145,7 @@ func prepareInput(ti typeNameToInfo, p *inputPart, n int) (string, []inputLocati
 		info, _ := ti[p.source[0].prefix]
 		// Case 2.1.1 e.g. "(*) VALUES ($P.*)"
 		if p.cols[0] == "*" {
-			for _, tag := range getKeys(info.tagToField) {
+			for _, tag := range info.tags {
 				cols = append(cols, tag)
 				inLocs = append(inLocs, inputLocation{info.structType, info.tagToField[tag]})
 			}
@@ -237,9 +237,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, []outputDest, 
 				pref = p.source[0].prefix
 			}
 
-			// getKeys also sorts the keys.
-			tags := getKeys(info.tagToField)
-			for _, tag := range tags {
+			for _, tag := range info.tags {
 				outCols = append(outCols, fullName{pref, tag})
 				outDests = append(outDests, outputDest{info.structType, info.tagToField[tag]})
 			}
