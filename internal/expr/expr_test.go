@@ -101,27 +101,27 @@ var tests = []struct {
 }, {
 	"input v1",
 	"SELECT foo, bar FROM table WHERE foo = $Person.id",
-	"[Bypass[SELECT foo, bar FROM table WHERE foo = ] Input[Person.id]]",
+	"[Bypass[SELECT foo, bar FROM table WHERE foo = ] Input[[] [Person.id]]]",
 	[]any{Person{}},
-	`SELECT foo, bar FROM table WHERE foo = ?`,
+	`SELECT foo, bar FROM table WHERE foo = @_sqlair_0`,
 }, {
 	"input v2",
 	"SELECT p FROM person WHERE p.name = $Person.name",
-	"[Bypass[SELECT p FROM person WHERE p.name = ] Input[Person.name]]",
+	"[Bypass[SELECT p FROM person WHERE p.name = ] Input[[] [Person.name]]]",
 	[]any{Person{}},
-	`SELECT p FROM person WHERE p.name = ?`,
+	`SELECT p FROM person WHERE p.name = @_sqlair_0`,
 }, {
 	"input v3",
 	"SELECT p.*, a.district FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = $Person.name",
-	"[Bypass[SELECT p.*, a.district FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = ] Input[Person.name]]",
+	"[Bypass[SELECT p.*, a.district FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = ] Input[[] [Person.name]]]",
 	[]any{Person{}},
-	`SELECT p.*, a.district FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = ?`,
+	`SELECT p.*, a.district FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = @_sqlair_0`,
 }, {
-	"output and input",
+	"star output and input",
 	"SELECT &Person.* FROM table WHERE foo = $Address.id",
-	"[Bypass[SELECT ] Output[[] [Person.*]] Bypass[ FROM table WHERE foo = ] Input[Address.id]]",
+	"[Bypass[SELECT ] Output[[] [Person.*]] Bypass[ FROM table WHERE foo = ] Input[[] [Address.id]]]",
 	[]any{Person{}, Address{}},
-	`SELECT address_id AS _sqlair_0, id AS _sqlair_1, name AS _sqlair_2 FROM table WHERE foo = ?`,
+	`SELECT address_id AS _sqlair_0, id AS _sqlair_1, name AS _sqlair_2 FROM table WHERE foo = @_sqlair_0`,
 }, {
 	"output and quote",
 	"SELECT foo, bar, &Person.id FROM table WHERE foo = 'xx'",
@@ -203,27 +203,27 @@ var tests = []struct {
 }, {
 	"complex query v3",
 	"SELECT p.* AS &Person.*, (a.district, a.street) AS &Address.* FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name IN (SELECT name FROM table WHERE table.n = $Person.name)",
-	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[a.district a.street] [Address.*]] Bypass[ FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name IN (SELECT name FROM table WHERE table.n = ] Input[Person.name] Bypass[)]]",
+	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[a.district a.street] [Address.*]] Bypass[ FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name IN (SELECT name FROM table WHERE table.n = ] Input[[] [Person.name]] Bypass[)]]",
 	[]any{Person{}, Address{}},
-	`SELECT p.address_id AS _sqlair_0, p.id AS _sqlair_1, p.name AS _sqlair_2, a.district AS _sqlair_3, a.street AS _sqlair_4 FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name IN (SELECT name FROM table WHERE table.n = ?)`,
+	`SELECT p.address_id AS _sqlair_0, p.id AS _sqlair_1, p.name AS _sqlair_2, a.district AS _sqlair_3, a.street AS _sqlair_4 FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name IN (SELECT name FROM table WHERE table.n = @_sqlair_0)`,
 }, {
 	"complex query v4",
 	"SELECT p.* AS &Person.*, (a.district, a.street) AS &Address.* FROM person WHERE p.name IN (SELECT name FROM table WHERE table.n = $Person.name) UNION SELECT p.* AS &Person.*, (a.district, a.street) AS &Address.* FROM person WHERE p.name IN (SELECT name FROM table WHERE table.n = $Person.name)",
-	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[a.district a.street] [Address.*]] Bypass[ FROM person WHERE p.name IN (SELECT name FROM table WHERE table.n = ] Input[Person.name] Bypass[) UNION SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[a.district a.street] [Address.*]] Bypass[ FROM person WHERE p.name IN (SELECT name FROM table WHERE table.n = ] Input[Person.name] Bypass[)]]",
+	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[a.district a.street] [Address.*]] Bypass[ FROM person WHERE p.name IN (SELECT name FROM table WHERE table.n = ] Input[[] [Person.name]] Bypass[) UNION SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[a.district a.street] [Address.*]] Bypass[ FROM person WHERE p.name IN (SELECT name FROM table WHERE table.n = ] Input[[] [Person.name]] Bypass[)]]",
 	[]any{Person{}, Address{}},
-	`SELECT p.address_id AS _sqlair_0, p.id AS _sqlair_1, p.name AS _sqlair_2, a.district AS _sqlair_3, a.street AS _sqlair_4 FROM person WHERE p.name IN (SELECT name FROM table WHERE table.n = ?) UNION SELECT p.address_id AS _sqlair_5, p.id AS _sqlair_6, p.name AS _sqlair_7, a.district AS _sqlair_8, a.street AS _sqlair_9 FROM person WHERE p.name IN (SELECT name FROM table WHERE table.n = ?)`,
+	`SELECT p.address_id AS _sqlair_0, p.id AS _sqlair_1, p.name AS _sqlair_2, a.district AS _sqlair_3, a.street AS _sqlair_4 FROM person WHERE p.name IN (SELECT name FROM table WHERE table.n = @_sqlair_0) UNION SELECT p.address_id AS _sqlair_5, p.id AS _sqlair_6, p.name AS _sqlair_7, a.district AS _sqlair_8, a.street AS _sqlair_9 FROM person WHERE p.name IN (SELECT name FROM table WHERE table.n = @_sqlair_1)`,
 }, {
 	"complex query v5",
 	"SELECT p.* AS &Person.*, &District.* FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = $Person.name AND p.address_id = $Person.address_id",
-	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[] [District.*]] Bypass[ FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = ] Input[Person.name] Bypass[ AND p.address_id = ] Input[Person.address_id]]",
+	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, ] Output[[] [District.*]] Bypass[ FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = ] Input[[] [Person.name]] Bypass[ AND p.address_id = ] Input[[] [Person.address_id]]]",
 	[]any{Person{}, District{}},
-	`SELECT p.address_id AS _sqlair_0, p.id AS _sqlair_1, p.name AS _sqlair_2,  FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = ? AND p.address_id = ?`,
+	`SELECT p.address_id AS _sqlair_0, p.id AS _sqlair_1, p.name AS _sqlair_2,  FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = @_sqlair_0 AND p.address_id = @_sqlair_1`,
 }, {
 	"complex query v6",
 	"SELECT p.* AS &Person.*, FROM person AS p INNER JOIN address AS a ON p.address_id = $Address.id WHERE p.name = $Person.name AND p.address_id = $Person.address_id",
-	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, FROM person AS p INNER JOIN address AS a ON p.address_id = ] Input[Address.id] Bypass[ WHERE p.name = ] Input[Person.name] Bypass[ AND p.address_id = ] Input[Person.address_id]]",
+	"[Bypass[SELECT ] Output[[p.*] [Person.*]] Bypass[, FROM person AS p INNER JOIN address AS a ON p.address_id = ] Input[[] [Address.id]] Bypass[ WHERE p.name = ] Input[[] [Person.name]] Bypass[ AND p.address_id = ] Input[[] [Person.address_id]]]",
 	[]any{Person{}, Address{}},
-	`SELECT p.address_id AS _sqlair_0, p.id AS _sqlair_1, p.name AS _sqlair_2, FROM person AS p INNER JOIN address AS a ON p.address_id = ? WHERE p.name = ? AND p.address_id = ?`,
+	`SELECT p.address_id AS _sqlair_0, p.id AS _sqlair_1, p.name AS _sqlair_2, FROM person AS p INNER JOIN address AS a ON p.address_id = @_sqlair_0 WHERE p.name = @_sqlair_1 AND p.address_id = @_sqlair_2`,
 }, {
 	"join v1",
 	"SELECT p.* AS &Person.*, m.* AS &Manager.* FROM person AS p JOIN person AS m ON p.manager_id = m.id WHERE p.name = 'Fred'",
@@ -237,11 +237,23 @@ var tests = []struct {
 	[]any{},
 	"SELECT person.*, address.district FROM person JOIN address ON person.address_id = address.id WHERE person.name = 'Fred'",
 }, {
-	"insert",
-	"INSERT INTO person (name) VALUES $Person.name",
-	"[Bypass[INSERT INTO person (name) VALUES ] Input[Person.name]]",
+	"insert v1",
+	"INSERT INTO person (*) VALUES ($Person.*)",
+	"[Bypass[INSERT INTO person ] Input[[*] [Person.*]]]",
 	[]any{Person{}},
-	`INSERT INTO person (name) VALUES ?`,
+	`INSERT INTO person (address_id, id, name) VALUES (@_sqlair_0, @_sqlair_1, @_sqlair_2)`,
+}, {
+	"insert v2",
+	"INSERT INTO person (name, id) VALUES ($Person.*)",
+	"[Bypass[INSERT INTO person ] Input[[name id] [Person.*]]]",
+	[]any{Person{}},
+	`INSERT INTO person (name, id) VALUES (@_sqlair_0, @_sqlair_1)`,
+}, {
+	"insert v3",
+	"INSERT INTO person (name, postalcode) VALUES ($Person.name, $Address.id)",
+	"[Bypass[INSERT INTO person ] Input[[name postalcode] [Person.name Address.id]]]",
+	[]any{Person{}, Address{}},
+	`INSERT INTO person (name, postalcode) VALUES (@_sqlair_0, @_sqlair_1)`,
 }, {
 	"ignore dollar v1",
 	"SELECT $ FROM moneytable",
@@ -263,9 +275,9 @@ var tests = []struct {
 }, {
 	"input with no space",
 	"SELECT p.*, a.district FROM person AS p WHERE p.name=$Person.name",
-	"[Bypass[SELECT p.*, a.district FROM person AS p WHERE p.name=] Input[Person.name]]",
+	"[Bypass[SELECT p.*, a.district FROM person AS p WHERE p.name=] Input[[] [Person.name]]]",
 	[]any{Person{}},
-	`SELECT p.*, a.district FROM person AS p WHERE p.name=?`,
+	`SELECT p.*, a.district FROM person AS p WHERE p.name=@_sqlair_0`,
 }, {
 	"escaped double quote",
 	`SELECT foo FROM t WHERE t.p = "Jimmy ""Quickfingers"" Jones"`,
@@ -287,9 +299,9 @@ var tests = []struct {
 }, {
 	"update",
 	"UPDATE person SET person.address_id = $Address.id WHERE person.id = $Person.id",
-	"[Bypass[UPDATE person SET person.address_id = ] Input[Address.id] Bypass[ WHERE person.id = ] Input[Person.id]]",
+	"[Bypass[UPDATE person SET person.address_id = ] Input[[] [Address.id]] Bypass[ WHERE person.id = ] Input[[] [Person.id]]]",
 	[]any{Person{}, Address{}},
-	`UPDATE person SET person.address_id = ? WHERE person.id = ?`,
+	`UPDATE person SET person.address_id = @_sqlair_0 WHERE person.id = @_sqlair_1`,
 }}
 
 func (s *ExprSuite) TestRound(c *C) {
@@ -307,7 +319,7 @@ func (s *ExprSuite) TestRound(c *C) {
 		}
 
 		if preparedExpr, err = parsedExpr.Prepare(test.prepareArgs...); err != nil {
-			c.Errorf("test %d failed (Prepare):\nsummary: %s\ninput: %s\nexpected: %s\nerr: %s\n", i, test.summary, test.input, test.expectedPrepared, err)
+			c.Errorf("test %d failed (Prepare):\nsummary: %s\ninput:    %s\nexpected: %s\nerr: %s\n", i, test.summary, test.input, test.expectedPrepared, err)
 		} else {
 			c.Check(preparedExpr.SQL, Equals, test.expectedPrepared,
 				Commentf("test %d failed (Prepare):\nsummary: %s\ninput: %s\nexpected: %s\nactual:   %s\n", i, test.summary, test.input, test.expectedPrepared, preparedExpr.SQL))
@@ -321,10 +333,10 @@ func (s *ExprSuite) TestValidInput(c *C) {
 		expectedParsed string
 	}{{
 		"SELECT street FROM t WHERE x = $Address.street",
-		"[Bypass[SELECT street FROM t WHERE x = ] Input[Address.street]]",
+		"[Bypass[SELECT street FROM t WHERE x = ] Input[[] [Address.street]]]",
 	}, {
 		"SELECT p FROM t WHERE x = $Person.id",
-		"[Bypass[SELECT p FROM t WHERE x = ] Input[Person.id]]",
+		"[Bypass[SELECT p FROM t WHERE x = ] Input[[] [Person.id]]]",
 	}}
 	for _, test := range testList {
 		parser := expr.NewParser()
@@ -415,28 +427,46 @@ func FuzzParser(f *testing.F) {
 
 func (s *ExprSuite) TestPrepareMismatchedStructName(c *C) {
 	testList := []struct {
-		sql     string
-		structs []any
+		sql              string
+		structs          []any
+		expectedPrepared string
 	}{{
-		sql:     "SELECT street FROM t WHERE x = $Address.street",
-		structs: []any{Person{ID: 1}},
+		"SELECT street FROM t WHERE x = $Address.street",
+		[]any{Address{}},
+		"SELECT street FROM t WHERE x = @[a-zA-Z_0-9]+",
 	}, {
-		sql:     "SELECT street AS &Address.street FROM t",
-		structs: []any{},
+		"SELECT street FROM t WHERE x, y = ($Address.street, $Person.id)",
+		[]any{Address{}, Person{}},
+		`SELECT street FROM t WHERE x, y = \(@[a-zA-Z_0-9]+, @[a-zA-Z_0-9]+\)`,
 	}, {
-		sql:     "SELECT street AS &Address.id FROM t",
-		structs: []any{Person{ID: 1}},
+		"SELECT p FROM t WHERE x = $Person.id",
+		[]any{Person{}},
+		"SELECT p FROM t WHERE x = @[a-zA-Z_0-9]+",
+	}, {
+		"INSERT INTO person (*) VALUES ($Person.*)",
+		[]any{Person{}},
+		`INSERT INTO person \(address_id, id, name\) VALUES \(@[a-zA-Z_0-9]+, @[a-zA-Z_0-9]+, @[a-zA-Z_0-9]+\)`,
+	}, {
+		"INSERT INTO person (name, id) VALUES ($Person.*)",
+		[]any{Person{}},
+		`INSERT INTO person \(name, id\) VALUES \(@[a-zA-Z_0-9]+, @[a-zA-Z_0-9]+\)`,
+	}, {
+		"INSERT INTO person (name, postalcode) VALUES ($Person.name, $Address.id)",
+		[]any{Person{}, Address{}},
+		`INSERT INTO person \(name, postalcode\) VALUES \(@[a-zA-Z_0-9]+, @[a-zA-Z_0-9]+\)`,
 	}}
 
-	for i, test := range testList {
+	for _, test := range testList {
 		parser := expr.NewParser()
 		parsedExpr, err := parser.Parse(test.sql)
 		if err != nil {
 			c.Fatal(err)
 		}
-		_, err = parsedExpr.Prepare(test.structs...)
-		c.Assert(err, ErrorMatches, `cannot prepare expression: type [a-zA-Z_\.0-9]+ unknown, have: .*`,
-			Commentf("test %d failed:\nsql: '%s'\nstructs: '%+v'", i, test.sql, test.structs))
+		preparedExpr, err := parsedExpr.Prepare(Address{}, Person{})
+		if err != nil {
+			c.Fatal(err)
+		}
+		c.Assert(preparedExpr.SQL, Matches, test.expectedPrepared)
 	}
 
 }
@@ -465,7 +495,6 @@ func (s *ExprSuite) TestPrepareMissingTag(c *C) {
 		_, err = parsedExpr.Prepare(test.structs...)
 		c.Assert(err, ErrorMatches, `cannot prepare expression: type [a-zA-Z_\.0-9]+ has no "[a-zA-Z_\.0-9]+" db tag`,
 			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
-
 	}
 }
 
@@ -482,6 +511,21 @@ func (s *ExprSuite) TestPrepareInvalidAsteriskPlacement(c *C) {
 	}, {
 		sql:     "SELECT p.* AS &Address.street FROM t",
 		structs: []any{Address{}},
+	}, {
+		sql:     "INSERT INTO person (*, postalcode) VALUES ($Person.name, $Address.id)",
+		structs: []any{Address{}, Person{}},
+	}, {
+		sql:     "INSERT INTO person (name, postalcode) VALUES ($Person.*, $Address.*)",
+		structs: []any{Address{}, Person{}},
+	}, {
+		sql:     "INSERT INTO person (*) VALUES ($Person.id)",
+		structs: []any{Person{}},
+	}, {
+		sql:     "INSERT INTO person (name, postalcode) VALUES ($Person.*, $Address.*)",
+		structs: []any{Address{}, Person{}},
+	}, {
+		sql:     "SELECT street FROM t WHERE x = $Address.*",
+		structs: []any{Address{}},
 	}}
 
 	for i, test := range testList {
@@ -491,7 +535,7 @@ func (s *ExprSuite) TestPrepareInvalidAsteriskPlacement(c *C) {
 			c.Fatal(err)
 		}
 		_, err = parsedExpr.Prepare(test.structs...)
-		c.Assert(err, ErrorMatches, "cannot prepare expression: invalid asterisk in output expression: .*",
+		c.Assert(err, ErrorMatches, "cannot prepare expression: invalid asterisk in input|output expression: .*",
 			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
 	}
 }
@@ -523,6 +567,14 @@ func (s *ExprSuite) TestPrepareAsteriskMix(c *C) {
 	}
 }
 
+func (s *ExprSuite) TestMismatchedColNum(c *C) {
+	sql := "INSERT INTO person (postalcode) VALUES ($Person.name, $Address.id)"
+	parser := expr.NewParser()
+	parsedExpr, err := parser.Parse(sql)
+	_, err = parsedExpr.Prepare(Address{ID: 1}, Person{Fullname: "jim"})
+	c.Assert(err, ErrorMatches, `cannot prepare expression: mismatched number of inputs and cols in input expression: .*`)
+}
+
 func (s *ExprSuite) TestPrepareMismatchedColsAndTargs(c *C) {
 	testList := []struct {
 		sql     string
@@ -542,99 +594,100 @@ func (s *ExprSuite) TestPrepareMismatchedColsAndTargs(c *C) {
 			c.Fatal(err)
 		}
 		_, err = parsedExpr.Prepare(test.structs...)
+
 		c.Assert(err, ErrorMatches, "cannot prepare expression: mismatched number of cols and targets in output expression: .*",
 			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
 	}
 }
 
-// func (s *ExprSuite) TestValidComplete(c *C) {
-// 	testList := []struct {
-// 		input          string
-// 		prepareArgs    []any
-// 		completeArgs   []any
-// 		completeValues []any
-// 	}{{
-// 		"SELECT * AS &Address.* FROM t WHERE x = $Person.name",
-// 		[]any{Address{}, Person{}},
-// 		[]any{Person{Fullname: "Jimany Johnson"}},
-// 		[]any{"Jimany Johnson"},
-// 	}, {
-// 		"SELECT foo FROM t WHERE x = $Address.street, y = $Person.id",
-// 		[]any{Person{}, Address{}},
-// 		[]any{Person{ID: 666}, Address{Street: "Highway to Hell"}},
-// 		[]any{"Highway to Hell", 666},
-// 	}}
-// 	for _, test := range testList {
-// 		parser := expr.NewParser()
-// 		parsedExpr, err := parser.Parse(test.input)
-// 		if err != nil {
-// 			c.Fatal(err)
-// 		}
-//
-// 		preparedExpr, err := parsedExpr.Prepare(test.prepareArgs...)
-// 		if err != nil {
-// 			c.Fatal(err)
-// 		}
-//
-// 		completedExpr, err := preparedExpr.Complete(test.completeArgs...)
-// 		if err != nil {
-// 			c.Fatal(err)
-// 		}
-//
-// 		c.Assert(completedExpr.InputValues, DeepEquals, test.completeValues)
-// 	}
-// }
-//
-// func (s *ExprSuite) TestCompleteMissingParameter(c *C) {
-// 	sql := "SELECT street FROM t WHERE x = $Address.street, y = $Person.name"
-// 	parser := expr.NewParser()
-// 	parsedExpr, err := parser.Parse(sql)
-// 	if err != nil {
-// 		c.Fatal(err)
-// 	}
-//
-// 	preparedExpr, err := parsedExpr.Prepare(Address{}, Person{})
-// 	if err != nil {
-// 		c.Fatal(err)
-// 	}
-// 	_, err = preparedExpr.Complete(Address{Street: "Dead end road"})
-// 	c.Assert(err, ErrorMatches, `cannot complete expression: type "Person" not passed as a parameter`)
-// }
-//
-// func (s *ExprSuite) TestCompleteNilType(c *C) {
-// 	sql := "SELECT street FROM t WHERE x = $Address.street, y = $Person.name"
-// 	parser := expr.NewParser()
-// 	parsedExpr, err := parser.Parse(sql)
-// 	if err != nil {
-// 		c.Fatal(err)
-// 	}
-// 	preparedExpr, err := parsedExpr.Prepare(Address{}, Person{})
-// 	if err != nil {
-// 		c.Fatal(err)
-// 	}
-// 	_, err = preparedExpr.Complete(nil, Person{Fullname: "Monty Bingles"})
-// 	c.Assert(err, ErrorMatches, "cannot complete expression: cannot reflect nil value")
-// }
-//
-// func (s *ExprSuite) TestCompleteDifferentType(c *C) {
-// 	sql := "SELECT street FROM t WHERE y = $Person.name"
-// 	outerP := Person{}
-// 	//type Person struct{}
-// 	type Person struct {
-// 		ID         int    `db:"id"`
-// 		Fullname   string `db:"name"`
-// 		PostalCode int    `db:"address_id"`
-// 	}
-// 	shadowedP := Person{}
-// 	parser := expr.NewParser()
-// 	parsedExpr, err := parser.Parse(sql)
-// 	if err != nil {
-// 		c.Fatal(err)
-// 	}
-// 	preparedExpr, err := parsedExpr.Prepare(outerP)
-// 	if err != nil {
-// 		c.Fatal(err)
-// 	}
-// 	_, err = preparedExpr.Complete(shadowedP)
-// 	c.Assert(err, ErrorMatches, `cannot complete expression: type "Person" is not the type passed to Prepare`)
-// }
+func (s *ExprSuite) TestValidComplete(c *C) {
+	testList := []struct {
+		input          string
+		prepareArgs    []any
+		completeArgs   []any
+		completeValues []any
+	}{{
+		"SELECT * AS &Address.* FROM t WHERE x = $Person.name",
+		[]any{Address{}, Person{}},
+		[]any{Person{Fullname: "Jimany Johnson"}},
+		[]any{"Jimany Johnson"},
+	}, {
+		"SELECT foo FROM t WHERE x = $Address.street, y = $Person.id",
+		[]any{Person{}, Address{}},
+		[]any{Person{ID: 666}, Address{Street: "Highway to Hell"}},
+		[]any{"Highway to Hell", 666},
+	}}
+	for _, test := range testList {
+		parser := expr.NewParser()
+		parsedExpr, err := parser.Parse(test.input)
+		if err != nil {
+			c.Fatal(err)
+		}
+
+		preparedExpr, err := parsedExpr.Prepare(test.prepareArgs...)
+		if err != nil {
+			c.Fatal(err)
+		}
+
+		inputVals, err := preparedExpr.Complete(test.completeArgs...)
+		if err != nil {
+			c.Fatal(err)
+		}
+
+		c.Assert(inputVals, DeepEquals, test.completeValues)
+	}
+}
+
+func (s *ExprSuite) TestCompleteMissingParameter(c *C) {
+	sql := "SELECT street FROM t WHERE x = $Address.street, y = $Person.name"
+	parser := expr.NewParser()
+	parsedExpr, err := parser.Parse(sql)
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	preparedExpr, err := parsedExpr.Prepare(Address{}, Person{})
+	if err != nil {
+		c.Fatal(err)
+	}
+	_, err = preparedExpr.Complete(Address{Street: "Dead end road"})
+	c.Assert(err, ErrorMatches, `type Person not passed as a parameter`)
+}
+
+func (s *ExprSuite) TestCompleteNilType(c *C) {
+	sql := "SELECT street FROM t WHERE x = $Address.street, y = $Person.name"
+	parser := expr.NewParser()
+	parsedExpr, err := parser.Parse(sql)
+	if err != nil {
+		c.Fatal(err)
+	}
+	preparedExpr, err := parsedExpr.Prepare(Address{}, Person{})
+	if err != nil {
+		c.Fatal(err)
+	}
+	_, err = preparedExpr.Complete(nil, Person{Fullname: "Monty Bingles"})
+	c.Assert(err, ErrorMatches, "nil parameter")
+}
+
+func (s *ExprSuite) TestCompleteDifferentType(c *C) {
+	sql := "SELECT street FROM t WHERE y = $Person.name"
+	outerP := Person{}
+	//type Person struct{}
+	type Person struct {
+		ID         int    `db:"id"`
+		Fullname   string `db:"name"`
+		PostalCode int    `db:"address_id"`
+	}
+	shadowedP := Person{}
+	parser := expr.NewParser()
+	parsedExpr, err := parser.Parse(sql)
+	if err != nil {
+		c.Fatal(err)
+	}
+	preparedExpr, err := parsedExpr.Prepare(outerP)
+	if err != nil {
+		c.Fatal(err)
+	}
+	_, err = preparedExpr.Complete(shadowedP)
+	c.Assert(err, ErrorMatches, `type Person not passed as a parameter`)
+}
