@@ -21,7 +21,7 @@ func (re *ResultExpr) One(args ...any) error {
 	return nil
 }
 
-// getTypes returns the types in the order they are in the query
+// getTypes returns the types in the order they appear in the query
 func getTypes(ods []outputDest) []reflect.Type {
 	isDup := make(map[reflect.Type]bool)
 	ts := []reflect.Type{}
@@ -34,7 +34,9 @@ func getTypes(ods []outputDest) []reflect.Type {
 	return ts
 }
 
-// This version returns a slice rather than populating one
+// All returns a slice containing all rows returned in the query. Each row is
+// a slice of any types that contains all structs mentioned in the output expressions
+// of the query.
 func (re *ResultExpr) All() ([][]any, error) {
 	var s [][]any
 

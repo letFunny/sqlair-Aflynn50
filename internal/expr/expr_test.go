@@ -499,34 +499,63 @@ func (s *ExprSuite) TestPrepareMissingTag(c *C) {
 	}
 }
 
+var validAsteriskser = []struct {
+	sql     string
+	structs []any
+}{{
+	sql:     "SELECT (&Person.*, &Person.*) FROM t",
+	structs: []any{Address{}, Person{}},
+}}
+
 func (s *ExprSuite) TestPrepareInvalidAsteriskPlacement(c *C) {
 	testList := []struct {
-		sql     string
-		structs []any
+		sql      string
+		structs  []any
+		errorstr string
 	}{{
-		sql:     "SELECT (&Person.*, &Person.*) FROM t",
-		structs: []any{Address{}, Person{}},
+		sql:      "SELECT (p.*, t.*) AS &Address.* FROM t",
+		structs:  []any{Address{}},
+		errorstr: "cannot prepare expression: invalid asterisk in: (p.*, t.*) AS &Address.*",
 	}, {
-		sql:     "SELECT (p.*, t.*) AS &Address.* FROM t",
-		structs: []any{Address{}},
+		sql:      "INSERT INTO person (*, postalcode) VALUES ($Person.name, $Address.id)",
+		structs:  []any{Address{}, Person{}},
+		errorstr: "cannot prepare expression: invalid asterisk in: (*, postalcode) VALUES ($Person.name, $Address.id)",
 	}, {
-		sql:     "SELECT p.* AS &Address.street FROM t",
-		structs: []any{Address{}},
+		sql:      "INSERT INTO person (name, postalcode) VALUES ($Person.*, $Address.*)",
+		structs:  []any{Address{}, Person{}},
+		errorstr: "cannot prepare expression: invalid asterisk in: (name, postalcode) VALUES ($Person.*, $Address.*)",
 	}, {
-		sql:     "INSERT INTO person (*, postalcode) VALUES ($Person.name, $Address.id)",
-		structs: []any{Address{}, Person{}},
+		sql:      "INSERT INTO person (*) VALUES ($Person.id)",
+		structs:  []any{Person{}},
+		errorstr: "cannot prepare expression: invalid asterisk in: (*) VALUES ($Person.id)",
 	}, {
-		sql:     "INSERT INTO person (name, postalcode) VALUES ($Person.*, $Address.*)",
-		structs: []any{Address{}, Person{}},
+		sql:      "SELECT street FROM t WHERE x = $Address.*",
+		structs:  []any{Address{}},
+		errorstr: "cannot prepare expression: invalid asterisk in: ($Address.*)",
 	}, {
-		sql:     "INSERT INTO person (*) VALUES ($Person.id)",
-		structs: []any{Person{}},
+		sql:      "SELECT (p.*, t.name) AS &Address.* FROM t",
+		structs:  []any{Address{}},
+		errorstr: "cannot prepare expression: invalid asterisk in: (p.*, t.name) AS &Address.*",
 	}, {
-		sql:     "INSERT INTO person (name, postalcode) VALUES ($Person.*, $Address.*)",
-		structs: []any{Address{}, Person{}},
+		sql:      "SELECT (name, p.*) AS (&Person.id, &Person.*) FROM t",
+		structs:  []any{Address{}, Person{}},
+		errorstr: "cannot prepare expression: invalid asterisk in: (name, p.*) AS (&Person.id, &Person.*)",
 	}, {
-		sql:     "SELECT street FROM t WHERE x = $Address.*",
-		structs: []any{Address{}},
+		sql:      "SELECT (p.id, p.name) AS (&Person.*, &Person.id) FROM t",
+		structs:  []any{Address{}, Person{}},
+		errorstr: "cannot prepare expression: cannot match columns to targets in: (p.id, p.name) AS (&Person.*, &Person.id)",
+	}, {
+		sql:      "INSERT INTO person (postalcode) VALUES ($Person.name, $Address.id)",
+		structs:  []any{Address{}, Person{}},
+		errorstr: "cannot prepare expression: cannot match columns to targets in: (postalcode) VALUES ($Person.name, $Address.id)",
+	}, {
+		sql:      "SELECT (p.name, t.id) AS &Address.id FROM t",
+		structs:  []any{Address{}},
+		errorstr: "cannot prepare expression: cannot match columns to targets in: (p.name, t.id) AS &Address.id",
+	}, {
+		sql:      "SELECT p.name AS (&Address.district, &Address.street) FROM t",
+		structs:  []any{Address{}},
+		errorstr: "cannot prepare expression: cannot match columns to targets in: (p.name) AS (&Address.district, &Address.street)",
 	}}
 
 	for i, test := range testList {
@@ -536,67 +565,7 @@ func (s *ExprSuite) TestPrepareInvalidAsteriskPlacement(c *C) {
 			c.Fatal(err)
 		}
 		_, err = parsedExpr.Prepare(test.structs...)
-		c.Assert(err, ErrorMatches, "cannot prepare expression: invalid asterisk in input|output expression: .*",
-			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
-	}
-}
-
-func (s *ExprSuite) TestPrepareAsteriskMix(c *C) {
-	testList := []struct {
-		sql     string
-		structs []any
-	}{{
-		sql:     "SELECT (&Address.*, &Address.id) FROM t",
-		structs: []any{Address{}, Person{}},
-	}, {
-		sql:     "SELECT (p.*, t.name) AS &Address.* FROM t",
-		structs: []any{Address{}},
-	}, {
-		sql:     "SELECT (name, p.*) AS (&Person.id, &Person.*) FROM t",
-		structs: []any{Address{}, Person{}},
-	}}
-
-	for i, test := range testList {
-		parser := expr.NewParser()
-		parsedExpr, err := parser.Parse(test.sql)
-		if err != nil {
-			c.Fatal(err)
-		}
-		_, err = parsedExpr.Prepare(test.structs...)
-		c.Assert(err, ErrorMatches, "cannot prepare expression: invalid asterisk in output expression: .*",
-			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
-	}
-}
-
-func (s *ExprSuite) TestMismatchedColNum(c *C) {
-	sql := "INSERT INTO person (postalcode) VALUES ($Person.name, $Address.id)"
-	parser := expr.NewParser()
-	parsedExpr, err := parser.Parse(sql)
-	_, err = parsedExpr.Prepare(Address{ID: 1}, Person{Fullname: "jim"})
-	c.Assert(err, ErrorMatches, `cannot prepare expression: mismatched number of inputs and cols in input expression: .*`)
-}
-
-func (s *ExprSuite) TestPrepareMismatchedColsAndTargs(c *C) {
-	testList := []struct {
-		sql     string
-		structs []any
-	}{{
-		sql:     "SELECT (p.name, t.id) AS &Address.id FROM t",
-		structs: []any{Address{}},
-	}, {
-		sql:     "SELECT p.name AS (&Address.district, &Address.street) FROM t",
-		structs: []any{Address{}},
-	}}
-
-	for i, test := range testList {
-		parser := expr.NewParser()
-		parsedExpr, err := parser.Parse(test.sql)
-		if err != nil {
-			c.Fatal(err)
-		}
-		_, err = parsedExpr.Prepare(test.structs...)
-
-		c.Assert(err, ErrorMatches, "cannot prepare expression: mismatched number of cols and targets in output expression: .*",
+		c.Assert(err.Error(), Equals, test.errorstr,
 			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
 	}
 }
