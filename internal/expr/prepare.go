@@ -208,7 +208,10 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, []outputDest, 
 
 	// Case 1: Star target cases e.g. "...&P.*".
 	if p.target[0].name == "*" {
-		info, _ := ti[p.target[0].prefix]
+		info, ok := ti[p.target[0].prefix]
+		if !ok {
+			return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, p.target[0].prefix, strings.Join(getKeys(ti), ", "))
+		}
 
 		// Case 1.1: Single star i.e. "t.* AS &P.*" or "&P.*"
 		if len(p.source) == 0 || p.source[0].name == "*" {
@@ -239,35 +242,33 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, []outputDest, 
 				outDests = append(outDests, outputDest{info.structType, f})
 			}
 		}
+		return outCols, outDests, nil
 	}
 
 	// Case 2: Non-star target cases e.g. "(&P.name, &P.id)" or "name_1 AS &P.name".
-	if p.target[0].name != "*" {
-		for _, t := range p.target {
-			info, ok = ti[t.prefix]
-			if !ok {
-				return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, t.prefix, strings.Join(getKeys(ti), ", "))
-			}
-
-			f, ok := info.tagToField[t.name]
-			if !ok {
-				return nil, nil, fmt.Errorf(`type %s has no %q db tag`, info.structType.Name(), t.name)
-			}
-
-			outDests = append(outDests, outputDest{info.structType, f})
-
-			// Case 2.2: No columns e.g. "(&P.name, &P.id)".
-			if len(p.source) == 0 {
-				outCols = append(outCols, fullName{name: t.name})
-			}
+	for _, t := range p.target {
+		info, ok = ti[t.prefix]
+		if !ok {
+			return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, t.prefix, strings.Join(getKeys(ti), ", "))
 		}
 
-		// Case 2.1: Explicit columns e.g. "name_1 AS &P.name".
-		if len(p.source) > 0 {
-			outCols = append(outCols, p.source...)
+		f, ok := info.tagToField[t.name]
+		if !ok {
+			return nil, nil, fmt.Errorf(`type %s has no %q db tag`, info.structType.Name(), t.name)
+		}
+
+		outDests = append(outDests, outputDest{info.structType, f})
+
+		// Case 2.2: No columns e.g. "(&P.name, &P.id)".
+		if len(p.source) == 0 {
+			outCols = append(outCols, fullName{name: t.name})
 		}
 	}
 
+	// Case 2.1: Explicit columns e.g. "name_1 AS &P.name".
+	if len(p.source) > 0 {
+		outCols = append(outCols, p.source...)
+	}
 	return outCols, outDests, nil
 }
 

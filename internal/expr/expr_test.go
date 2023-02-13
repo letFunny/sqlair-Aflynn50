@@ -570,8 +570,8 @@ func (s *ExprSuite) TestPrepareAsteriskMix(c *C) {
 func (s *ExprSuite) TestMismatchedColNum(c *C) {
 	sql := "INSERT INTO person (postalcode) VALUES ($Person.name, $Address.id)"
 	parser := expr.NewParser()
-	parsedExpr, err := parser.Parse(sql)
-	_, err = parsedExpr.Prepare(Address{ID: 1}, Person{Fullname: "jim"})
+	parsedExpr, _ := parser.Parse(sql)
+	_, err := parsedExpr.Prepare(Address{ID: 1}, Person{Fullname: "jim"})
 	c.Assert(err, ErrorMatches, `cannot prepare expression: mismatched number of inputs and cols in input expression: .*`)
 }
 
