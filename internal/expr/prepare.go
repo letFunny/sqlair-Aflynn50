@@ -264,9 +264,7 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, []outputDest, 
 
 		// Case 2.1: Explicit columns e.g. "name_1 AS &P.name".
 		if len(p.source) > 0 {
-			for _, c := range p.source {
-				outCols = append(outCols, c)
-			}
+			outCols = append(outCols, p.source...)
 		}
 	}
 
