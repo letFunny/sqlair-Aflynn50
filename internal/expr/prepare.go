@@ -188,8 +188,8 @@ func starCheckOutput(p *outputPart) error {
 	return nil
 }
 
-// prepareOutput checks that the output expressions are correspond to a known types.
-// It then checks they are formatted correctly and finally generates the columns for the query.
+// prepareOutput checks that the output expressions correspond to known types.
+// It then checks they are formatted correctly, and finally generates the columns for the query.
 func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, []outputDest, error) {
 
 	var outCols = make([]fullName, 0)
@@ -203,24 +203,6 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, []outputDest, 
 	// Check target struct type and its tags are valid.
 	var info *info
 	var ok bool
-
-	for _, t := range p.target {
-		info, ok = ti[t.prefix]
-		if !ok {
-			return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, t.prefix, strings.Join(getKeys(ti), ", "))
-		}
-
-		if t.name != "*" {
-			f, ok := info.tagToField[t.name]
-			if !ok {
-				return nil, nil, fmt.Errorf(`type %s has no %q db tag`, info.structType.Name(), t.name)
-			}
-			// For a none star expression we record output destinations here.
-			// For a star expression we fill out the destinations as we generate the columns.
-			outDests = append(outDests, outputDest{info.structType, f})
-
-		}
-	}
 
 	// Generate columns to inject into SQL query.
 
@@ -256,24 +238,38 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, []outputDest, 
 				outCols = append(outCols, c)
 				outDests = append(outDests, outputDest{info.structType, f})
 			}
-			return outCols, outDests, nil
 		}
 	}
 
-	// Case 2: None star target cases e.g. "...(&P.name, &P.id)".
+	// Case 2: Non-star target cases e.g. "(&P.name, &P.id)" or "name_1 AS &P.name".
+	if p.target[0].name != "*" {
+		for _, t := range p.target {
+			info, ok = ti[t.prefix]
+			if !ok {
+				return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, t.prefix, strings.Join(getKeys(ti), ", "))
+			}
 
-	// Case 2.1: Explicit columns e.g. "name_1 AS P.name".
-	if len(p.source) > 0 {
-		for _, c := range p.source {
-			outCols = append(outCols, c)
+			f, ok := info.tagToField[t.name]
+			if !ok {
+				return nil, nil, fmt.Errorf(`type %s has no %q db tag`, info.structType.Name(), t.name)
+			}
+
+			outDests = append(outDests, outputDest{info.structType, f})
+
+			// Case 2.2: No columns e.g. "(&P.name, &P.id)".
+			if len(p.source) == 0 {
+				outCols = append(outCols, fullName{name: t.name})
+			}
 		}
-		return outCols, outDests, nil
+
+		// Case 2.1: Explicit columns e.g. "name_1 AS &P.name".
+		if len(p.source) > 0 {
+			for _, c := range p.source {
+				outCols = append(outCols, c)
+			}
+		}
 	}
 
-	// Case 2.2: No columns e.g. "(&P.name, &P.id)".
-	for _, t := range p.target {
-		outCols = append(outCols, fullName{name: t.name})
-	}
 	return outCols, outDests, nil
 }
 
