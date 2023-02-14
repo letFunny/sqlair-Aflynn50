@@ -36,75 +36,6 @@ func getKeys[T any](m map[string]T) []string {
 	return keys
 }
 
-func printCols(cs []fullName) string {
-	var s bytes.Buffer
-	s.WriteString("(")
-	for i, c := range cs {
-		s.WriteString(c.String())
-		if i < len(cs)-1 {
-			s.WriteString(", ")
-		}
-	}
-	s.WriteString(")")
-	return s.String()
-}
-
-// nParams returns "num" incrementing parameters with the first index being
-// "start".
-func nParams(start int, num int) string {
-	var s bytes.Buffer
-	s.WriteString("(")
-	for i := start; i < start+num; i++ {
-		s.WriteString("@sqlair_")
-		s.WriteString(strconv.Itoa(i))
-		if i < start+num-1 {
-			s.WriteString(", ")
-		}
-	}
-	s.WriteString(")")
-	return s.String()
-}
-
-func starCount(fns []fullName) int {
-	s := 0
-	for _, fn := range fns {
-		if fn.name == "*" {
-			s++
-		}
-	}
-	return s
-}
-
-func starCheck(p ioPart) error {
-	numTypes := len(p.types)
-	numCols := len(p.cols)
-	starTypes := starCount(p.types)
-	starCols := starCount(p.cols)
-
-	if (numCols == 1 && starCols == 1) || (p.isOut && numCols == 0) {
-		return nil
-	}
-
-	if !p.isOut && numCols == 0 && numTypes > 1 {
-		return fmt.Errorf("internal error: cannot group standalone input expressions")
-	}
-
-	if (numCols > 1 && starCols > 0) || (!p.isOut && numCols == 0 && starTypes > 0) {
-		return fmt.Errorf("invalid asterisk in: %s", p.raw())
-	}
-
-	if numCols > 0 && starCols == 0 && !((numTypes == 1 && starTypes == 1) || (starTypes == 0 && numTypes == numCols)) {
-		return fmt.Errorf("cannot match columns to types in: %s", p.raw())
-	}
-
-	return nil
-}
-
-type retBuilder struct {
-	cols []fullName
-	locs []loc
-}
-
 type ioPart struct {
 	cols  []fullName
 	types []fullName
@@ -145,8 +76,79 @@ func (p *ioPart) raw() string {
 	return b.String()
 }
 
-// prepareOutput checks that the output expressions are correspond to a known types.
-// It then checks they are formatted correctly and finally generates the columns for the query.
+// printCols prints a bracketed, comma seperated list of fullNames.
+func printCols(cs []fullName) string {
+	var s bytes.Buffer
+	s.WriteString("(")
+	for i, c := range cs {
+		s.WriteString(c.String())
+		if i < len(cs)-1 {
+			s.WriteString(", ")
+		}
+	}
+	s.WriteString(")")
+	return s.String()
+}
+
+// nParams returns "num" incrementing parameters with the first index being
+// "start".
+func nParams(start int, num int) string {
+	var s bytes.Buffer
+	s.WriteString("(")
+	for i := start; i < start+num; i++ {
+		s.WriteString("@sqlair_")
+		s.WriteString(strconv.Itoa(i))
+		if i < start+num-1 {
+			s.WriteString(", ")
+		}
+	}
+	s.WriteString(")")
+	return s.String()
+}
+
+func starCount(fns []fullName) int {
+	s := 0
+	for _, fn := range fns {
+		if fn.name == "*" {
+			s++
+		}
+	}
+	return s
+}
+
+// checkValid ensures that the expression is formatted correctly.
+func checkValid(p ioPart) error {
+	numTypes := len(p.types)
+	numCols := len(p.cols)
+	starTypes := starCount(p.types)
+	starCols := starCount(p.cols)
+
+	if (numCols == 1 && starCols == 1) || (p.isOut && numCols == 0) {
+		return nil
+	}
+
+	if !p.isOut && numCols == 0 && numTypes > 1 {
+		return fmt.Errorf("internal error: cannot group standalone input expressions")
+	}
+
+	if (numCols > 1 && starCols > 0) || (!p.isOut && numCols == 0 && starTypes > 0) {
+		return fmt.Errorf("invalid asterisk in: %s", p.raw())
+	}
+
+	if numCols > 0 && starCols == 0 && !((numTypes == 1 && starTypes == 1) || (starTypes == 0 && numTypes == numCols)) {
+		return fmt.Errorf("cannot match columns to types in: %s", p.raw())
+	}
+
+	return nil
+}
+
+type retBuilder struct {
+	cols []fullName
+	locs []loc
+}
+
+// prepareExpr checks that an input or output part is correctly formatted, that
+// it corrosponds to known types and then generates the columns to go in the query.
 func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
 
 	var info *info
@@ -162,10 +164,10 @@ func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
 		return nil, nil, fmt.Errorf("internal error: cannot prepare bypass part")
 	}
 
-	// This stores the list of columns to put in the query and the location they
-	// are going.
-	rb := retBuilder{}
+	// res stores the list of columns to put in the query and their locations.
+	res := retBuilder{}
 
+	// add prepares a location and column.
 	add := func(typeName string, tag string, col fullName) error {
 		info, ok = ti[typeName]
 		if !ok {
@@ -176,14 +178,13 @@ func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
 		if !ok {
 			return fmt.Errorf(`type %s has no %q db tag`, info.structType.Name(), tag)
 		}
-		rb.cols = append(rb.cols, col)
-		rb.locs = append(rb.locs, loc{info.structType, f})
+		res.cols = append(res.cols, col)
+		res.locs = append(res.locs, loc{info.structType, f})
 		return nil
 	}
 
-	// Check the asterisk are well formed (if present).
-
-	if err := starCheck(io); err != nil {
+	// Check the expression is valid.
+	if err := checkValid(io); err != nil {
 		return nil, nil, err
 	}
 
@@ -197,7 +198,7 @@ func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
 		if err := add(io.types[0].prefix, io.types[0].name, fullName{}); err != nil {
 			return nil, nil, err
 		}
-		return rb.cols, rb.locs, nil
+		return res.cols, res.locs, nil
 	}
 
 	// Case 1: sqlair generates columns e.g. "* AS (&P.*, &A.id)" or "&P.*" or
@@ -227,7 +228,7 @@ func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
 				}
 			}
 		}
-		return rb.cols, rb.locs, nil
+		return res.cols, res.locs, nil
 	}
 	// Case 2: Explicit columns with star e.g. "(name, id) AS (&P.*)" or
 	// 		   "(col1, col2) VALUES ($P.*)".
@@ -238,7 +239,7 @@ func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
 				return nil, nil, err
 			}
 		}
-		return rb.cols, rb.locs, nil
+		return res.cols, res.locs, nil
 	}
 
 	// Case 3: Explicit columns and targets e.g. "(col1, col2) AS (&P.name, &P.id)" or
@@ -249,7 +250,7 @@ func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
 			return nil, nil, err
 		}
 	}
-	return rb.cols, rb.locs, nil
+	return res.cols, res.locs, nil
 }
 
 // Prepare takes a parsed expression and struct instantiations of all the types

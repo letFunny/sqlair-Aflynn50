@@ -426,35 +426,43 @@ func FuzzParser(f *testing.F) {
 	})
 }
 
-func (s *ExprSuite) TestPrepareMismatchedStructName(c *C) {
+func (s *ExprSuite) TestValidPrepare(c *C) {
 	testList := []struct {
-		sql              string
-		structs          []any
-		expectedPrepared string
+		sql      string
+		structs  []any
+		expected string
 	}{{
-		"SELECT street FROM t WHERE x = $Address.street",
-		[]any{Address{}},
-		"SELECT street FROM t WHERE x = @[a-zA-Z_0-9]+",
+		sql:      "SELECT street FROM t WHERE x = $Address.street",
+		structs:  []any{Address{}},
+		expected: "SELECT street FROM t WHERE x = @sqlair_0",
 	}, {
-		"SELECT street FROM t WHERE x, y = ($Address.street, $Person.id)",
-		[]any{Address{}, Person{}},
-		`SELECT street FROM t WHERE x, y = \(@[a-zA-Z_0-9]+, @[a-zA-Z_0-9]+\)`,
+		sql:      "SELECT street FROM t WHERE x, y = ($Address.street, $Person.id)",
+		structs:  []any{Address{}, Person{}},
+		expected: `SELECT street FROM t WHERE x, y = (@sqlair_0, @sqlair_1)`,
 	}, {
-		"SELECT p FROM t WHERE x = $Person.id",
-		[]any{Person{}},
-		"SELECT p FROM t WHERE x = @[a-zA-Z_0-9]+",
+		sql:      "SELECT p FROM t WHERE x = $Person.id",
+		structs:  []any{Person{}},
+		expected: "SELECT p FROM t WHERE x = @sqlair_0",
 	}, {
-		"INSERT INTO person (*) VALUES ($Person.*)",
-		[]any{Person{}},
-		`INSERT INTO person \(address_id, id, name\) VALUES \(@[a-zA-Z_0-9]+, @[a-zA-Z_0-9]+, @[a-zA-Z_0-9]+\)`,
+		sql:      "INSERT INTO person (*) VALUES ($Person.*)",
+		structs:  []any{Person{}},
+		expected: `INSERT INTO person (address_id, id, name) VALUES (@sqlair_0, @sqlair_1, @sqlair_2)`,
 	}, {
-		"INSERT INTO person (name, id) VALUES ($Person.*)",
-		[]any{Person{}},
-		`INSERT INTO person \(name, id\) VALUES \(@[a-zA-Z_0-9]+, @[a-zA-Z_0-9]+\)`,
+		sql:      "INSERT INTO person (name, id) VALUES ($Person.*)",
+		structs:  []any{Person{}},
+		expected: `INSERT INTO person (name, id) VALUES (@sqlair_0, @sqlair_1)`,
 	}, {
-		"INSERT INTO person (name, postalcode) VALUES ($Person.name, $Address.id)",
-		[]any{Person{}, Address{}},
-		`INSERT INTO person \(name, postalcode\) VALUES \(@[a-zA-Z_0-9]+, @[a-zA-Z_0-9]+\)`,
+		sql:      "INSERT INTO person (name, postalcode) VALUES ($Person.name, $Address.id)",
+		structs:  []any{Person{}, Address{}},
+		expected: `INSERT INTO person (name, postalcode) VALUES (@sqlair_0, @sqlair_1)`,
+	}, {
+		sql:      "SELECT (&Person.*, &Person.*) FROM t",
+		structs:  []any{Address{}, Person{}},
+		expected: "SELECT (address_id AS _sqlair_0, id AS _sqlair_1, name AS _sqlair_2, address_id AS _sqlair_3, id AS _sqlair_4, name AS _sqlair_5) FROM t",
+	}, {
+		sql:      "SELECT * AS (&Manager.manager_name, &Person.*, &Address.id) FROM t",
+		structs:  []any{Address{}, Person{}, Manager{}},
+		expected: "SELECT manager_name AS _sqlair_0, address_id AS _sqlair_1, id AS _sqlair_2, name AS _sqlair_3, id AS _sqlair_4 FROM t",
 	}}
 
 	for _, test := range testList {
@@ -463,56 +471,33 @@ func (s *ExprSuite) TestPrepareMismatchedStructName(c *C) {
 		if err != nil {
 			c.Fatal(err)
 		}
-		preparedExpr, err := parsedExpr.Prepare(Address{}, Person{})
+		preparedExpr, err := parsedExpr.Prepare(test.structs...)
 		if err != nil {
 			c.Fatal(err)
 		}
-		c.Assert(preparedExpr.SQL, Matches, test.expectedPrepared)
+		c.Assert(preparedExpr.SQL, Equals, test.expected)
 	}
 
 }
 
-func (s *ExprSuite) TestPrepareMissingTag(c *C) {
-	testList := []struct {
-		sql     string
-		structs []any
-	}{{
-		sql:     "SELECT street FROM t WHERE x = $Address.number",
-		structs: []any{Address{ID: 1}},
-	}, {
-		sql:     "SELECT (street, road) AS &Address.* FROM t",
-		structs: []any{Address{ID: 1}},
-	}, {
-		sql:     "SELECT &Address.road FROM t",
-		structs: []any{Address{ID: 1}},
-	}}
-
-	for i, test := range testList {
-		parser := expr.NewParser()
-		parsedExpr, err := parser.Parse(test.sql)
-		if err != nil {
-			c.Fatal(err)
-		}
-		_, err = parsedExpr.Prepare(test.structs...)
-		c.Assert(err, ErrorMatches, `cannot prepare expression: type [a-zA-Z_\.0-9]+ has no "[a-zA-Z_\.0-9]+" db tag`,
-			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
-	}
-}
-
-var validAsteriskser = []struct {
-	sql     string
-	structs []any
-}{{
-	sql:     "SELECT (&Person.*, &Person.*) FROM t",
-	structs: []any{Address{}, Person{}},
-}}
-
-func (s *ExprSuite) TestPrepareInvalidAsteriskPlacement(c *C) {
+func (s *ExprSuite) TestInvalidPrepare(c *C) {
 	testList := []struct {
 		sql      string
 		structs  []any
 		errorstr string
 	}{{
+		sql:      "SELECT street FROM t WHERE x = $Address.number",
+		structs:  []any{Address{ID: 1}},
+		errorstr: `cannot prepare expression: type Address has no "number" db tag`,
+	}, {
+		sql:      "SELECT (street, road) AS &Address.* FROM t",
+		structs:  []any{Address{ID: 1}},
+		errorstr: `cannot prepare expression: type Address has no "road" db tag`,
+	}, {
+		sql:      "SELECT &Address.road FROM t",
+		structs:  []any{Address{ID: 1}},
+		errorstr: `cannot prepare expression: type Address has no "road" db tag`,
+	}, {
 		sql:      "SELECT (p.*, t.*) AS &Address.* FROM t",
 		structs:  []any{Address{}},
 		errorstr: "cannot prepare expression: invalid asterisk in: (p.*, t.*) AS (&Address.*)",
