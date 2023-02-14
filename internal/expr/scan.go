@@ -22,11 +22,11 @@ func (re *ResultExpr) One(args ...any) error {
 }
 
 // getTypes returns the types in the order they appear in the query
-func getTypes(ods []outputDest) []reflect.Type {
+func getTypes(ods []loc) []reflect.Type {
 	isDup := make(map[reflect.Type]bool)
 	ts := []reflect.Type{}
 	for _, od := range ods {
-		if t := od.structType; !isDup[t] {
+		if t := od.typ; !isDup[t] {
 			isDup[t] = true
 			ts = append(ts, t)
 		}
@@ -133,7 +133,7 @@ func (re *ResultExpr) Decode(args ...any) (err error) {
 func (re *ResultExpr) decodeValue(v reflect.Value) error {
 	typeFound := false
 	for i, outDest := range re.outputs {
-		if outDest.structType == v.Type() {
+		if outDest.typ == v.Type() {
 			typeFound = true
 			err := setValue(v, outDest.field, re.rs[i])
 			if err != nil {

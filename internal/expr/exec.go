@@ -6,7 +6,7 @@ import (
 )
 
 type ResultExpr struct {
-	outputs []outputDest
+	outputs []loc
 	rows    *sql.Rows
 	rs      []any
 }

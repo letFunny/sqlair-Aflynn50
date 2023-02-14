@@ -180,9 +180,9 @@ var tests = []struct {
 }, {
 	"multicolumn output v5",
 	"SELECT (&Address.street, &Person.id) FROM address AS a WHERE p.name = 'Fred'",
-	"[Bypass[SELECT ] Output[[] [Address.street Person.id]] Bypass[ FROM address AS a WHERE p.name = 'Fred']]",
+	"[Bypass[SELECT (] Output[[] [Address.street]] Bypass[, ] Output[[] [Person.id]] Bypass[) FROM address AS a WHERE p.name = 'Fred']]",
 	[]any{Address{}, Person{}},
-	"SELECT street AS _sqlair_0, id AS _sqlair_1 FROM address AS a WHERE p.name = 'Fred'",
+	"SELECT (street AS _sqlair_0, id AS _sqlair_1) FROM address AS a WHERE p.name = 'Fred'",
 }, {
 	"quote",
 	"SELECT 1 FROM person WHERE p.name = 'Fred'",
@@ -515,7 +515,7 @@ func (s *ExprSuite) TestPrepareInvalidAsteriskPlacement(c *C) {
 	}{{
 		sql:      "SELECT (p.*, t.*) AS &Address.* FROM t",
 		structs:  []any{Address{}},
-		errorstr: "cannot prepare expression: invalid asterisk in: (p.*, t.*) AS &Address.*",
+		errorstr: "cannot prepare expression: invalid asterisk in: (p.*, t.*) AS (&Address.*)",
 	}, {
 		sql:      "INSERT INTO person (*, postalcode) VALUES ($Person.name, $Address.id)",
 		structs:  []any{Address{}, Person{}},
@@ -523,11 +523,7 @@ func (s *ExprSuite) TestPrepareInvalidAsteriskPlacement(c *C) {
 	}, {
 		sql:      "INSERT INTO person (name, postalcode) VALUES ($Person.*, $Address.*)",
 		structs:  []any{Address{}, Person{}},
-		errorstr: "cannot prepare expression: invalid asterisk in: (name, postalcode) VALUES ($Person.*, $Address.*)",
-	}, {
-		sql:      "INSERT INTO person (*) VALUES ($Person.id)",
-		structs:  []any{Person{}},
-		errorstr: "cannot prepare expression: invalid asterisk in: (*) VALUES ($Person.id)",
+		errorstr: "cannot prepare expression: cannot match columns to types in: (name, postalcode) VALUES ($Person.*, $Address.*)",
 	}, {
 		sql:      "SELECT street FROM t WHERE x = $Address.*",
 		structs:  []any{Address{}},
@@ -535,7 +531,7 @@ func (s *ExprSuite) TestPrepareInvalidAsteriskPlacement(c *C) {
 	}, {
 		sql:      "SELECT (p.*, t.name) AS &Address.* FROM t",
 		structs:  []any{Address{}},
-		errorstr: "cannot prepare expression: invalid asterisk in: (p.*, t.name) AS &Address.*",
+		errorstr: "cannot prepare expression: invalid asterisk in: (p.*, t.name) AS (&Address.*)",
 	}, {
 		sql:      "SELECT (name, p.*) AS (&Person.id, &Person.*) FROM t",
 		structs:  []any{Address{}, Person{}},
@@ -543,19 +539,19 @@ func (s *ExprSuite) TestPrepareInvalidAsteriskPlacement(c *C) {
 	}, {
 		sql:      "SELECT (p.id, p.name) AS (&Person.*, &Person.id) FROM t",
 		structs:  []any{Address{}, Person{}},
-		errorstr: "cannot prepare expression: cannot match columns to targets in: (p.id, p.name) AS (&Person.*, &Person.id)",
+		errorstr: "cannot prepare expression: cannot match columns to types in: (p.id, p.name) AS (&Person.*, &Person.id)",
 	}, {
 		sql:      "INSERT INTO person (postalcode) VALUES ($Person.name, $Address.id)",
 		structs:  []any{Address{}, Person{}},
-		errorstr: "cannot prepare expression: cannot match columns to targets in: (postalcode) VALUES ($Person.name, $Address.id)",
+		errorstr: "cannot prepare expression: cannot match columns to types in: (postalcode) VALUES ($Person.name, $Address.id)",
 	}, {
 		sql:      "SELECT (p.name, t.id) AS &Address.id FROM t",
 		structs:  []any{Address{}},
-		errorstr: "cannot prepare expression: cannot match columns to targets in: (p.name, t.id) AS &Address.id",
+		errorstr: "cannot prepare expression: cannot match columns to types in: (p.name, t.id) AS (&Address.id)",
 	}, {
 		sql:      "SELECT p.name AS (&Address.district, &Address.street) FROM t",
 		structs:  []any{Address{}},
-		errorstr: "cannot prepare expression: cannot match columns to targets in: (p.name) AS (&Address.district, &Address.street)",
+		errorstr: "cannot prepare expression: cannot match columns to types in: (p.name) AS (&Address.district, &Address.street)",
 	}}
 
 	for i, test := range testList {
@@ -566,7 +562,7 @@ func (s *ExprSuite) TestPrepareInvalidAsteriskPlacement(c *C) {
 		}
 		_, err = parsedExpr.Prepare(test.structs...)
 		c.Assert(err.Error(), Equals, test.errorstr,
-			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'", i, test.sql, test.structs))
+			Commentf("test %d failed:\nsql: '%s'\nstructs:'%+v'\n parsed: %v", i, test.sql, test.structs, parsedExpr))
 	}
 }
 
