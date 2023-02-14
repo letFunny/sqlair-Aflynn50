@@ -176,10 +176,10 @@ func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
 
 		f, ok := info.tagToField[tag]
 		if !ok {
-			return fmt.Errorf(`type %s has no %q db tag`, info.structType.Name(), tag)
+			return fmt.Errorf(`type %s has no %q db tag`, info.typ.Name(), tag)
 		}
 		res.cols = append(res.cols, col)
-		res.locs = append(res.locs, loc{info.structType, f})
+		res.locs = append(res.locs, loc{info.typ, f})
 		return nil
 	}
 
@@ -272,7 +272,7 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 		if err != nil {
 			return nil, err
 		}
-		ti[info.structType.Name()] = info
+		ti[info.typ.Name()] = info
 	}
 
 	var sql bytes.Buffer
