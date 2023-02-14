@@ -109,18 +109,10 @@ type retBuilder struct {
 
 // prepareExpr checks that an input or output part is correctly formatted, that
 // it corrosponds to known types and then generates the columns to go in the query.
-func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
+func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 
 	var info *info
 	var ok bool
-
-	var io *ioPart
-	switch p := part.(type) {
-	case *ioPart:
-		io = p
-	case *bypassPart, *inputPart, *outputPart:
-		return nil, nil, fmt.Errorf("internal error: cannot prepare bypass part")
-	}
 
 	// res stores the list of columns to put in the query and their locations.
 	res := retBuilder{}
@@ -142,18 +134,18 @@ func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
 	}
 
 	// Check the expression is valid.
-	if err := checkValid(io); err != nil {
+	if err := checkValid(p); err != nil {
 		return nil, nil, err
 	}
 
 	// Generate columns to inject into SQL query.
 
 	// Case 0: A simple standalone input expression e.g. "$P.name".
-	if !io.isOut && len(io.cols) == 0 {
-		if len(io.types) != 1 {
+	if !p.isOut && len(p.cols) == 0 {
+		if len(p.types) != 1 {
 			return []fullName{fullName{}}, nil, fmt.Errorf("internal error: cannot group standalone input expressions")
 		}
-		if err := add(io.types[0].prefix, io.types[0].name, fullName{}); err != nil {
+		if err := add(p.types[0].prefix, p.types[0].name, fullName{}); err != nil {
 			return nil, nil, err
 		}
 		return res.cols, res.locs, nil
@@ -161,13 +153,13 @@ func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
 
 	// Case 1: sqlair generates columns e.g. "* AS (&P.*, &A.id)" or "&P.*" or
 	// 		   "(*) VALUES ($P.*)".
-	if (io.isOut && len(io.cols) == 0) || (len(io.cols) == 1 && (io.cols[0].name == "*")) {
+	if (p.isOut && len(p.cols) == 0) || (len(p.cols) == 1 && (p.cols[0].name == "*")) {
 		pref := ""
 		// Prepend table name. E.g. the "t" in "t.* AS &P.*".
-		if len(io.cols) > 0 {
-			pref = io.cols[0].prefix
+		if len(p.cols) > 0 {
+			pref = p.cols[0].prefix
 		}
-		for _, t := range io.types {
+		for _, t := range p.types {
 			if t.name == "*" {
 				// Generate columns for Star types.
 				info, ok = ti[t.prefix]
@@ -191,9 +183,9 @@ func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
 	// Case 2: Explicit columns with star e.g. "(name, id) AS (&P.*)" or
 	// 		   "(col1, col2) VALUES ($P.*)".
 	// There must only be a single type in this case.
-	if io.types[0].name == "*" {
-		for _, c := range io.cols {
-			if err := add(io.types[0].prefix, c.name, c); err != nil {
+	if p.types[0].name == "*" {
+		for _, c := range p.cols {
+			if err := add(p.types[0].prefix, c.name, c); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -203,8 +195,8 @@ func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
 	// Case 3: Explicit columns and targets e.g. "(col1, col2) AS (&P.name, &P.id)" or
 	// 		   "(col1, col2) VALUES ($P.name, $P.id)".
 	// The number of each must be equal here.
-	for i, c := range io.cols {
-		if err := add(io.types[i].prefix, io.types[i].name, c); err != nil {
+	for i, c := range p.cols {
+		if err := add(p.types[i].prefix, p.types[i].name, c); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -246,11 +238,11 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 	for _, part := range pe.queryParts {
 		switch p := part.(type) {
 		case *ioPart:
+			cols, locs, err := prepareExpr(ti, p)
+			if err != nil {
+				return nil, err
+			}
 			if p.isOut {
-				cols, locs, err := prepareExpr(ti, p)
-				if err != nil {
-					return nil, err
-				}
 				for i, c := range cols {
 					sql.WriteString(c.String())
 					sql.WriteString(" AS _sqlair_")
@@ -262,10 +254,6 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 				}
 				outputs = append(outputs, locs...)
 			} else {
-				cols, locs, err := prepareExpr(ti, p)
-				if err != nil {
-					return nil, err
-				}
 				if len(p.cols) == 0 {
 					sql.WriteString("@sqlair_" + strconv.Itoa(n))
 				} else {
