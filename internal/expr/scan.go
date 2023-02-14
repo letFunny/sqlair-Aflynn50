@@ -158,11 +158,11 @@ func setValue(dest reflect.Value, fInfo field, val any) error {
 			return nil
 		}
 		isZero = true
-		v = reflect.Zero(fInfo.fieldType)
+		v = reflect.Zero(fInfo.typ)
 	}
 
-	if !isZero && v.Type() != fInfo.fieldType {
-		return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), fInfo.name, fInfo.fieldType.Name())
+	if !isZero && v.Type() != fInfo.typ {
+		return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), fInfo.name, fInfo.typ.Name())
 	}
 	f := dest.Field(fInfo.index)
 	if !f.CanSet() {
