@@ -36,46 +36,6 @@ func getKeys[T any](m map[string]T) []string {
 	return keys
 }
 
-type ioPart struct {
-	cols  []fullName
-	types []fullName
-	isOut bool
-}
-
-func (p *ioPart) raw() string {
-	var midWord string
-	var symb string
-	if p.isOut {
-		midWord = ") AS "
-		symb = "&"
-	} else {
-		midWord = ") VALUES "
-		symb = "$"
-	}
-	var b bytes.Buffer
-	if len(p.cols) > 0 {
-		b.WriteString("(")
-		for i, c := range p.cols {
-			b.WriteString(c.String())
-			if i < len(p.cols)-1 {
-				b.WriteString(", ")
-			}
-		}
-		b.WriteString(midWord)
-	}
-
-	b.WriteString("(")
-	for i, s := range p.types {
-		b.WriteString(symb)
-		b.WriteString(s.String())
-		if i < len(p.types)-1 {
-			b.WriteString(", ")
-		}
-	}
-	b.WriteString(")")
-	return b.String()
-}
-
 // printCols prints a bracketed, comma seperated list of fullNames.
 func printCols(cs []fullName) string {
 	var s bytes.Buffer
@@ -117,7 +77,7 @@ func starCount(fns []fullName) int {
 }
 
 // checkValid ensures that the expression is formatted correctly.
-func checkValid(p ioPart) error {
+func checkValid(p *ioPart) error {
 	numTypes := len(p.types)
 	numCols := len(p.cols)
 	starTypes := starCount(p.types)
@@ -132,11 +92,11 @@ func checkValid(p ioPart) error {
 	}
 
 	if (numCols > 1 && starCols > 0) || (!p.isOut && numCols == 0 && starTypes > 0) {
-		return fmt.Errorf("invalid asterisk in: %s", p.raw())
+		return fmt.Errorf("invalid asterisk in: %s", p.rawString)
 	}
 
 	if numCols > 0 && starCols == 0 && !((numTypes == 1 && starTypes == 1) || (starTypes == 0 && numTypes == numCols)) {
-		return fmt.Errorf("cannot match columns to types in: %s", p.raw())
+		return fmt.Errorf("cannot match columns to types in: %s", p.rawString)
 	}
 
 	return nil
@@ -154,13 +114,11 @@ func prepareExpr(ti typeNameToInfo, part queryPart) ([]fullName, []loc, error) {
 	var info *info
 	var ok bool
 
-	var io ioPart
+	var io *ioPart
 	switch p := part.(type) {
-	case *inputPart:
-		io = ioPart{cols: p.cols, types: p.source, isOut: false}
-	case *outputPart:
-		io = ioPart{cols: p.source, types: p.target, isOut: true}
-	case *bypassPart:
+	case *ioPart:
+		io = p
+	case *bypassPart, *inputPart, *outputPart:
 		return nil, nil, fmt.Errorf("internal error: cannot prepare bypass part")
 	}
 
@@ -287,36 +245,37 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 	// Check and expand each query part.
 	for _, part := range pe.queryParts {
 		switch p := part.(type) {
-		case *inputPart:
-			cols, locs, err := prepareExpr(ti, p)
-			if err != nil {
-				return nil, err
-			}
-			if len(p.cols) == 0 {
-				sql.WriteString("@sqlair_" + strconv.Itoa(n))
-			} else {
-				sql.WriteString(printCols(cols))
-				sql.WriteString(" VALUES ")
-				sql.WriteString(nParams(n, len(cols)))
-			}
-			n += len(cols)
-			inputs = append(inputs, locs...)
-		case *outputPart:
-			cols, locs, err := prepareExpr(ti, p)
-			if err != nil {
-				return nil, err
-			}
-			for i, c := range cols {
-				sql.WriteString(c.String())
-				sql.WriteString(" AS _sqlair_")
-				sql.WriteString(strconv.Itoa(m))
-				if i != len(cols)-1 {
-					sql.WriteString(", ")
+		case *ioPart:
+			if p.isOut {
+				cols, locs, err := prepareExpr(ti, p)
+				if err != nil {
+					return nil, err
 				}
-				m++
+				for i, c := range cols {
+					sql.WriteString(c.String())
+					sql.WriteString(" AS _sqlair_")
+					sql.WriteString(strconv.Itoa(m))
+					if i != len(cols)-1 {
+						sql.WriteString(", ")
+					}
+					m++
+				}
+				outputs = append(outputs, locs...)
+			} else {
+				cols, locs, err := prepareExpr(ti, p)
+				if err != nil {
+					return nil, err
+				}
+				if len(p.cols) == 0 {
+					sql.WriteString("@sqlair_" + strconv.Itoa(n))
+				} else {
+					sql.WriteString(printCols(cols))
+					sql.WriteString(" VALUES ")
+					sql.WriteString(nParams(n, len(cols)))
+				}
+				n += len(cols)
+				inputs = append(inputs, locs...)
 			}
-			outputs = append(outputs, locs...)
-
 		case *bypassPart:
 			sql.WriteString(p.chunk)
 		default:
