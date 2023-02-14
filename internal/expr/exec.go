@@ -37,7 +37,7 @@ func (pe *PreparedExpr) Exec(db *sql.DB, args ...any) (sql.Result, error) {
 		return nil, err
 	}
 
-	res, err := db.Exec(pe.SQL, qargs)
+	res, err := db.Exec(pe.SQL, qargs...)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %s", err)
 	}

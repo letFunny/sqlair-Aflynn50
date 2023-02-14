@@ -1,6 +1,7 @@
 package expr
 
 import (
+	"bytes"
 	"fmt"
 )
 
@@ -40,6 +41,32 @@ func (p *inputPart) String() string {
 	return fmt.Sprintf("Input[%+v %+v]", p.cols, p.source)
 }
 
+func (p *inputPart) raw() string {
+	var b bytes.Buffer
+	if len(p.cols) > 0 {
+		b.WriteString("(")
+		for i, c := range p.cols {
+			b.WriteString(c)
+			if i < len(p.cols)-1 {
+				b.WriteString(", ")
+			}
+		}
+		b.WriteString(") VALUES ")
+	}
+
+	b.WriteString("(")
+	for i, s := range p.source {
+		b.WriteString("$")
+		b.WriteString(s.String())
+		if i < len(p.source)-1 {
+			b.WriteString(", ")
+		}
+	}
+	b.WriteString(")")
+
+	return b.String()
+}
+
 func (p *inputPart) part() {}
 
 // outputPart represents a named target output variable in the SQL expression,
@@ -51,6 +78,34 @@ type outputPart struct {
 
 func (p *outputPart) String() string {
 	return fmt.Sprintf("Output[%+v %+v]", p.source, p.target)
+}
+
+func (p *outputPart) raw() string {
+	var b bytes.Buffer
+	if len(p.source) > 0 {
+		b.WriteString("(")
+		for i, s := range p.source {
+			b.WriteString(s.String())
+			if i < len(p.source)-1 {
+				b.WriteString(", ")
+			}
+		}
+		b.WriteString(") AS ")
+	}
+	if len(p.target) > 1 {
+		b.WriteString("(")
+	}
+	for i, t := range p.target {
+		b.WriteString("&")
+		b.WriteString(t.String())
+		if i < len(p.target)-1 {
+			b.WriteString(", ")
+		}
+	}
+	if len(p.target) > 1 {
+		b.WriteString(")")
+	}
+	return b.String()
 }
 
 func (p *outputPart) part() {}
