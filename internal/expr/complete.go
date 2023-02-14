@@ -23,9 +23,9 @@ func (pe *PreparedExpr) Complete(args ...any) ([]any, error) {
 	qargs := []any{}
 
 	for i, in := range pe.inputs {
-		v, ok := tv[in.inputType]
+		v, ok := tv[in.typ]
 		if !ok {
-			return nil, fmt.Errorf(`type %s not passed as a parameter`, in.inputType.Name())
+			return nil, fmt.Errorf(`type %s not passed as a parameter`, in.typ.Name())
 		}
 		named := sql.Named("sqlair_"+strconv.Itoa(i), v.Field(in.field.index).Interface())
 		qargs = append(qargs, named)
