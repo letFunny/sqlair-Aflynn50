@@ -107,16 +107,16 @@ var tests = []struct {
 	`SELECT foo, bar FROM table WHERE foo = @sqlair_0`,
 }, {
 	"input v2",
-	"SELECT p FROM person WHERE p.name = $Person.name",
-	"[Bypass[SELECT p FROM person WHERE p.name = ] Input[[] [Person.name]]]",
+	"SELECT p FROM person WHERE (p.name, p.id) = ($Person.name, $Person.id)",
+	"[Bypass[SELECT p FROM person WHERE (p.name, p.id) = (] Input[[] [Person.name]] Bypass[, ] Input[[] [Person.id]] Bypass[)]]",
 	[]any{Person{}},
-	`SELECT p FROM person WHERE p.name = @sqlair_0`,
+	`SELECT p FROM person WHERE (p.name, p.id) = (@sqlair_0, @sqlair_1)`,
 }, {
 	"input v3",
-	"SELECT p.*, a.district FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = $Person.name",
-	"[Bypass[SELECT p.*, a.district FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = ] Input[[] [Person.name]]]",
+	"SELECT p.*, a.district FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE (name, id, num, address_id) = ($Person.name, $Person.id, 1, $Person.address_id)",
+	"[Bypass[SELECT p.*, a.district FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE (name, id, num, address_id) = (] Input[[] [Person.name]] Bypass[, ] Input[[] [Person.id]] Bypass[, 1, ] Input[[] [Person.address_id]] Bypass[)]]",
 	[]any{Person{}},
-	`SELECT p.*, a.district FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE p.name = @sqlair_0`,
+	`SELECT p.*, a.district FROM person AS p JOIN address AS a ON p.address_id = a.id WHERE (name, id, num, address_id) = (@sqlair_0, @sqlair_1, 1, @sqlair_2)`,
 }, {
 	"star output and input",
 	"SELECT &Person.* FROM table WHERE foo = $Address.id",

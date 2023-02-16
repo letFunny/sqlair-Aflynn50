@@ -27,7 +27,7 @@ func (pe *PreparedExpr) Complete(args ...any) ([]any, error) {
 		if !ok {
 			return nil, fmt.Errorf(`type %s not passed as a parameter`, in.typ.Name())
 		}
-		named := sql.Named("sqlair_"+strconv.Itoa(i), v.Field(in.field.index).Interface())
+		named := sql.Named("sqlair_"+strconv.Itoa(i), v.FieldByIndex(in.field.index).Interface())
 		qargs = append(qargs, named)
 	}
 
