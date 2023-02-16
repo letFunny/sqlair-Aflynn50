@@ -175,15 +175,15 @@ func (s *ExprInternalSuite) TestReflectValidTag(c *C) {
 func (s *ExprInternalSuite) TestUnexportedField(c *C) {
 	var unexportedFields = []any{
 		struct {
-			ID    int64 `db: "id"`
-			unexp int64 `db: "unexp"`
+			ID    int64 `db:"id"`
+			unexp int64 `db:"unexp"`
 		}{99, 100},
 		struct {
-			unexp int64 `db: "unexp"`
-			ID    int64 `db: "id"`
+			unexp int64 `db:"unexp"`
+			ID    int64 `db:"id"`
 		}{99, 100},
 		struct {
-			unexp int64 `db: "unexp"`
+			unexp int64 `db:"unexp"`
 		}{100},
 	}
 
