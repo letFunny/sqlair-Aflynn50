@@ -14,6 +14,10 @@ type Q struct {
 	re *expr.ResultExpr
 }
 
+type DB struct {
+	expr.DB
+}
+
 func Prepare(input string, args ...any) (*Statement, error) {
 	var p = expr.NewParser()
 	parsedExpr, err := p.Parse(input)
@@ -31,20 +35,30 @@ func (s *Statement) SQL() string {
 	return s.pe.SQL
 }
 
-func (s *Statement) ExtractArgs(args ...any) ([]any, error) {
-	return s.pe.Complete(args...)
+func NewDB(db *sql.DB) *DB {
+	return &DB{expr.DB{db}}
 }
 
-func (s *Statement) Query(db *sql.DB, args ...any) (*Q, error) {
-	re, err := s.pe.Query(db, args...)
+func (db *DB) Query(s *Statement, args ...any) (*Q, error) {
+	ce, err := s.pe.Complete(args...)
+	if err != nil {
+		return nil, err
+	}
+
+	re, err := db.DB.Query(ce)
 	if err != nil {
 		return nil, err
 	}
 	return &Q{re: re}, nil
 }
 
-func (s *Statement) Exec(db *sql.DB, args ...any) (sql.Result, error) {
-	return s.pe.Exec(db, args...)
+func (db *DB) Exec(s *Statement, args ...any) (sql.Result, error) {
+	ce, err := s.pe.Complete(args...)
+	if err != nil {
+		return nil, err
+	}
+
+	return db.DB.Exec(ce)
 }
 
 func (q *Q) Next() (bool, error) {

@@ -7,9 +7,15 @@ import (
 	"strconv"
 )
 
+type CompletedExpr struct {
+	outputs []loc
+	SQL     string
+	Args    []any
+}
+
 // Complete gathers the query arguments that are specified in inputParts from
 // structs passed as parameters.
-func (pe *PreparedExpr) Complete(args ...any) ([]any, error) {
+func (pe *PreparedExpr) Complete(args ...any) (*CompletedExpr, error) {
 	var tv = make(map[reflect.Type]reflect.Value)
 	for _, arg := range args {
 		if arg == nil {
@@ -27,9 +33,9 @@ func (pe *PreparedExpr) Complete(args ...any) ([]any, error) {
 		if !ok {
 			return nil, fmt.Errorf(`type %s not passed as a parameter`, in.typ.Name())
 		}
-		named := sql.Named("sqlair_"+strconv.Itoa(i), v.Field(in.field.index).Interface())
+		named := sql.Named("sqlair_"+strconv.Itoa(i), v.FieldByIndex(in.field.index).Interface())
 		qargs = append(qargs, named)
 	}
 
-	return qargs, nil
+	return &CompletedExpr{outputs: pe.outputs, SQL: pe.SQL, Args: qargs}, nil
 }

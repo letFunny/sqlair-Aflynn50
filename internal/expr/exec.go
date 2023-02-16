@@ -9,44 +9,37 @@ import (
 type ResultExpr struct {
 	outputs []loc
 	rows    *sql.Rows
-	rs      []any
+	// rs stores the results from the current row
+	rs []any
 }
 
-type res struct {
-	tag string
-	val any
+type DB struct {
+	*sql.DB
 }
 
-func (pe *PreparedExpr) Query(db *sql.DB, args ...any) (*ResultExpr, error) {
-	return pe.QueryContext(db, context.Background(), args...)
+func NewDB(db *sql.DB) *DB {
+	return &DB{db}
 }
 
-func (pe *PreparedExpr) QueryContext(db *sql.DB, ctx context.Context, args ...any) (*ResultExpr, error) {
-	inputArgs, err := pe.Complete(args...)
-	if err != nil {
-		return nil, fmt.Errorf("argument error: %s", err)
-	}
-	rows, err := db.QueryContext(ctx, pe.SQL, inputArgs...)
+func (db *DB) Query(ce *CompletedExpr) (*ResultExpr, error) {
+	return db.QueryContext(ce, context.Background())
+}
+
+func (db *DB) QueryContext(ce *CompletedExpr, ctx context.Context) (*ResultExpr, error) {
+	rows, err := db.DB.QueryContext(ctx, ce.SQL, ce.Args...)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %s", err)
 	}
 
-	return &ResultExpr{pe.outputs, rows, nil}, nil
+	return &ResultExpr{ce.outputs, rows, nil}, nil
 }
 
-func (pe *PreparedExpr) Exec(db *sql.DB, args ...any) (sql.Result, error) {
-	return pe.ExecContext(db, context.Background(), args...)
+func (db *DB) Exec(ce *CompletedExpr) (sql.Result, error) {
+	return db.ExecContext(ce, context.Background())
 }
 
-func (pe *PreparedExpr) ExecContext(db *sql.DB, ctx context.Context, args ...any) (sql.Result, error) {
-	var qargs []any
-
-	qargs, err := pe.Complete(args...)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := db.ExecContext(ctx, pe.SQL, qargs...)
+func (db *DB) ExecContext(ce *CompletedExpr, ctx context.Context) (sql.Result, error) {
+	res, err := db.DB.ExecContext(ctx, ce.SQL, ce.Args...)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %s", err)
 	}
