@@ -129,7 +129,7 @@ func (re *ResultExpr) Decode(args ...any) (err error) {
 }
 
 // decodeValue sets the fields in the reflected struct "v" which have tags
-// corrosponding to columns in current row of the query results.
+// corresponding to columns in current row of the query results.
 func (re *ResultExpr) decodeValue(v reflect.Value) error {
 	typeFound := false
 	for i, outDest := range re.outputs {
@@ -164,7 +164,7 @@ func setValue(dest reflect.Value, fInfo field, val any) error {
 	if !isZero && v.Type() != fInfo.typ {
 		return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), fInfo.name, fInfo.typ.Name())
 	}
-	f := dest.Field(fInfo.index)
+	f := dest.FieldByIndex(fInfo.index) //.Field(fInfo.index)
 	if !f.CanSet() {
 		return fmt.Errorf("cannot set field %#v. CanAddr=%v", fInfo.name, f.CanAddr())
 	}
