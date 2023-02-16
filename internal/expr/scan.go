@@ -164,7 +164,7 @@ func setValue(dest reflect.Value, fInfo field, val any) error {
 	if !isZero && v.Type() != fInfo.typ {
 		return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), fInfo.name, fInfo.typ.Name())
 	}
-	f := dest.FieldByIndex(fInfo.index) //.Field(fInfo.index)
+	f := dest.FieldByIndex(fInfo.index)
 	if !f.CanSet() {
 		return fmt.Errorf("cannot set field %#v. CanAddr=%v", fInfo.name, f.CanAddr())
 	}

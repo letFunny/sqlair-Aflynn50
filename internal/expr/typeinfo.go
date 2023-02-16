@@ -12,16 +12,6 @@ import (
 var cacheMutex sync.RWMutex
 var cache = make(map[reflect.Type]*info)
 
-func typeInfoFromCache(t reflect.Type) (*info, error) {
-	cacheMutex.RLock()
-	info, found := cache[t]
-	cacheMutex.RUnlock()
-	if found {
-		return info, nil
-	}
-	return nil, fmt.Errorf("type %s not seen before", t.Name())
-}
-
 // Reflect will return the info of a given type,
 // generating and caching as required.
 func typeInfo(value any) (*info, error) {
@@ -55,7 +45,7 @@ func typeInfo(value any) (*info, error) {
 func generate(t reflect.Type) (*info, error) {
 	// Reflection information is only generated for structs.
 	if t.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("internal error: attempted to obtain struct information for something that is not a struct: %s", t)
+		return nil, fmt.Errorf("internal error: attempted to obtain struct information for something that is not a struct: %s.", t)
 	}
 
 	info := info{
@@ -71,7 +61,6 @@ func generate(t reflect.Type) (*info, error) {
 		if tag == "" {
 			continue
 		}
-
 		if !f.IsExported() {
 			return nil, fmt.Errorf("field %q of struct %s not exported", f.Name, t.Name())
 		}

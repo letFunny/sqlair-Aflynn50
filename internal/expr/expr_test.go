@@ -580,12 +580,12 @@ func (s *ExprSuite) TestValidComplete(c *C) {
 			c.Fatal(err)
 		}
 
-		inputVals, err := preparedExpr.Complete(test.completeArgs...)
+		completedExpr, err := preparedExpr.Complete(test.completeArgs...)
 		if err != nil {
 			c.Fatal(err)
 		}
 
-		c.Assert(inputVals, DeepEquals, test.completeValues)
+		c.Assert(completedExpr.Args, DeepEquals, test.completeValues)
 	}
 }
 

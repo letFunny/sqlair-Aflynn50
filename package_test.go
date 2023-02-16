@@ -114,8 +114,11 @@ CREATE TABLE address (
 		inserts = append(inserts, stmt)
 		args = append(args, a)
 	}
+
+	sqlairDB := sqlair.NewDB(db)
+
 	for i, s := range inserts {
-		_, err := s.Exec(db, args[i])
+		_, err := sqlairDB.Exec(s, args[i])
 		if err != nil {
 			return "", nil, err
 		}
@@ -190,13 +193,15 @@ func (s *PackageSuite) TestDecode(c *C) {
 		c.Fatal(err)
 	}
 
+	sqlairDB := sqlair.NewDB(db)
+
 	for _, t := range tests {
 		stmt, err := sqlair.Prepare(t.query, t.types...)
 		if err != nil {
 			c.Error(err)
 			continue
 		}
-		q, err := stmt.Query(db)
+		q, err := sqlairDB.Query(stmt)
 		if err != nil {
 			c.Error(err)
 			continue
@@ -251,13 +256,15 @@ func (s *PackageSuite) TestAll(c *C) {
 		c.Fatal(err)
 	}
 
+	sqlairDB := sqlair.NewDB(db)
+
 	for _, t := range tests {
 		stmt, err := sqlair.Prepare(t.query, t.types...)
 		if err != nil {
 			c.Error(err)
 			continue
 		}
-		q, err := stmt.Query(db)
+		q, err := sqlairDB.Query(stmt)
 		if err != nil {
 			c.Error(err)
 			continue
@@ -352,13 +359,15 @@ AND    l.model_uuid = $JujuLeaseKey.model_uuid`,
 		c.Fatal(err)
 	}
 
+	sqlairDB := sqlair.NewDB(db)
+
 	for _, t := range tests {
 		stmt, err := sqlair.Prepare(t.query, t.types...)
 		if err != nil {
 			c.Error(err)
 			continue
 		}
-		q, err := stmt.Query(db, t.inputs...)
+		q, err := sqlairDB.Query(stmt, t.inputs...)
 		if err != nil {
 			c.Error(err)
 			continue
