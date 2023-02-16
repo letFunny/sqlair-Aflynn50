@@ -45,7 +45,7 @@ func typeInfo(value any) (*info, error) {
 func generate(t reflect.Type) (*info, error) {
 	// Reflection information is only generated for structs.
 	if t.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("internal error: attempted to obtain struct information for something that is not a struct: %s.", t)
+		return nil, fmt.Errorf("internal error: attempted to obtain struct information for something that is not a struct: %s", t)
 	}
 
 	info := info{

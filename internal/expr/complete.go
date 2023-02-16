@@ -22,8 +22,7 @@ func (pe *PreparedExpr) Complete(args ...any) (*CompletedExpr, error) {
 			return nil, fmt.Errorf("nil parameter")
 		}
 		v := reflect.ValueOf(arg)
-		t := reflect.TypeOf(arg)
-		tv[t] = v
+		tv[v.Type()] = v
 	}
 
 	// Query parameteres.
