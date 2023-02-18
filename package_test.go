@@ -66,23 +66,22 @@ CREATE TABLE address (
 	district text,
 	street text
 );
-
 `
 	drop := `
-	 drop table person;
-	 drop table address;
-	 `
+drop table person;
+drop table address;
+`
 	var people = []Person{
-		Person{ID: 30, Fullname: "Fred", PostalCode: "1000"},
-		Person{ID: 20, Fullname: "Mark", PostalCode: "1500"},
-		Person{ID: 0, Fullname: "Mary", PostalCode: "3500"},
-		Person{ID: 35, Fullname: "James", PostalCode: "4500"},
+		{ID: 30, Fullname: "Fred", PostalCode: "1000"},
+		{ID: 20, Fullname: "Mark", PostalCode: "1500"},
+		{ID: 0, Fullname: "Mary", PostalCode: "3500"},
+		{ID: 35, Fullname: "James", PostalCode: "4500"},
 	}
 
 	var addresses = []Address{
-		Address{ID: 25, District: "Happy Land", Street: "Main Street"},
-		Address{ID: 30, District: "Sad World", Street: "Church Road"},
-		Address{ID: 10, District: "Ambivilent Commons", Street: "Station Lane"},
+		{ID: 25, District: "Happy Land", Street: "Main Street"},
+		{ID: 30, District: "Sad World", Street: "Church Road"},
+		{ID: 10, District: "Ambivilent Commons", Street: "Station Lane"},
 	}
 
 	db, err := setupDB()
@@ -98,19 +97,22 @@ CREATE TABLE address (
 	var inserts []*sqlair.Statement
 	var args []any
 
+	stmt, err := sqlair.Prepare("INSERT INTO person (*) VALUES ($Person.*);", Person{})
+	if err != nil {
+		return "", nil, err
+	}
+
 	for _, p := range people {
-		stmt, err := sqlair.Prepare("INSERT INTO person (*) VALUES ($Person.*);", Person{})
-		if err != nil {
-			return "", nil, err
-		}
 		inserts = append(inserts, stmt)
 		args = append(args, p)
 	}
+
+	stmt, err = sqlair.Prepare("INSERT INTO address (*) VALUES ($Address.*);", Address{})
+	if err != nil {
+		return "", nil, err
+	}
+
 	for _, a := range addresses {
-		stmt, err := sqlair.Prepare("INSERT INTO address (*) VALUES ($Address.*);", Address{})
-		if err != nil {
-			return "", nil, err
-		}
 		inserts = append(inserts, stmt)
 		args = append(args, a)
 	}
@@ -142,10 +144,9 @@ CREATE TABLE address (
 
 `
 	drop := `
-	 drop table person;
-	 drop table address;
-	 `
-
+drop table person;
+drop table address;
+`
 	inserts := []string{
 		"INSERT INTO person VALUES ('Fred', 30, '1000', 'fred@email.com');",
 		"INSERT INTO person VALUES ('Mark', 20, '1500', 'mark@email.com');",
@@ -166,21 +167,21 @@ CREATE TABLE address (
 
 func (s *PackageSuite) TestDecode(c *C) {
 	var tests = []struct {
-		summery  string
+		summary  string
 		query    string
 		types    []any
 		inputs   []any
 		outputs  [][]any
 		expected [][]any
 	}{{
-		summery:  "double select with name clash",
+		summary:  "double select with name clash",
 		query:    "SELECT p.id AS &Person.*, a.id AS &Address.* FROM person AS p, address AS a",
 		types:    []any{Person{}, Address{}},
 		inputs:   []any{},
 		outputs:  [][]any{{&Person{}, &Address{}}, {&Person{}, &Address{}}, {&Person{}, &Address{}}, {&Person{}, &Address{}}},
 		expected: [][]any{{&Person{ID: 30}, &Address{ID: 25}}, {&Person{ID: 30}, &Address{ID: 30}}, {&Person{ID: 30}, &Address{ID: 10}}, {&Person{ID: 20}, &Address{ID: 25}}},
 	}, {
-		summery:  "simple select person",
+		summary:  "simple select person",
 		query:    "SELECT * AS &Person.* FROM person",
 		types:    []any{Person{}},
 		inputs:   []any{},
@@ -312,12 +313,11 @@ CREATE TABLE lease_type (
 	id text,
 	type text
 );
-
 `
 	drop := `
-	 drop table lease;
-	 drop table lease_type;
-	 `
+drop table lease;
+drop table lease_type;
+`
 
 	inserts := []string{
 		"INSERT INTO lease VALUES ('uuid1', 'name1', 'holder1', 1, 'type_id1');",
