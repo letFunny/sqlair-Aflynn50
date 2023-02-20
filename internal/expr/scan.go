@@ -117,12 +117,11 @@ func (re *ResultExpr) Decode(args ...any) (err error) {
 
 		v := reflect.ValueOf(arg)
 		if v.Kind() != reflect.Pointer {
-			return fmt.Errorf("none pointer paramter")
+			return fmt.Errorf("none pointer parameter")
 		}
 		v = reflect.Indirect(v)
 
 		re.decodeValue(v)
-
 	}
 
 	return nil
@@ -139,7 +138,6 @@ func (re *ResultExpr) decodeValue(v reflect.Value) error {
 			if err != nil {
 				return fmt.Errorf("struct %s: %s", v.Type().Name(), err)
 			}
-
 		}
 	}
 	if !typeFound {
@@ -148,28 +146,51 @@ func (re *ResultExpr) decodeValue(v reflect.Value) error {
 	return nil
 }
 
-func setValue(dest reflect.Value, fInfo field, val any) error {
+func setValue(dest reflect.Value, fInfo fielder, val any) error {
 	var isZero bool
 
 	v := reflect.ValueOf(val)
 
-	if val == nil {
-		if fInfo.omitEmpty {
+	if dest.Type().Kind() == reflect.Struct {
+		switch f := fInfo.(type) {
+		case field:
+			if val == nil {
+				if f.omitEmpty {
+					return nil
+				}
+				isZero = true
+				v = reflect.Zero(f.typ)
+			}
+			if !isZero && v.Type() != f.typ {
+				return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), f.name, f.typ.Name())
+			}
+			itsField := dest.FieldByIndex(f.index)
+			if !itsField.CanSet() {
+				return fmt.Errorf("cannot set field %#v. CanAddr=%v", f.name, itsField.CanAddr())
+			}
+			itsField.Set(v)
+			return nil
+		case mapKey:
+			return fmt.Errorf("internal error: argument of type %#v has no member of type %#v", dest.Type(), f)
+		}
+	} else if dest.Type().Kind() == reflect.Map {
+		switch m := fInfo.(type) {
+		case field:
+			return fmt.Errorf("internal error: argument of type %#v has no member of type %#v", dest.Type(), m)
+		case mapKey:
+			if val == nil {
+				isZero = true
+				v = reflect.Zero(m.typ)
+			}
+			if !isZero && v.Type() != m.typ {
+				return fmt.Errorf("result of type %#v but map value %#v is type %#v", v.Type().Name(), m.name, m.typ.Name())
+			}
+			itsKey := dest.MapIndex(reflect.ValueOf(m.name))
+			itsKey.Set(v)
 			return nil
 		}
-		isZero = true
-		v = reflect.Zero(fInfo.typ)
 	}
-
-	if !isZero && v.Type() != fInfo.typ {
-		return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), fInfo.name, fInfo.typ.Name())
-	}
-	f := dest.FieldByIndex(fInfo.index)
-	if !f.CanSet() {
-		return fmt.Errorf("cannot set field %#v. CanAddr=%v", fInfo.name, f.CanAddr())
-	}
-	f.Set(v)
-	return nil
+	return fmt.Errorf("unsupported argument of kind %#v received when setting its value", dest.Type().Kind())
 }
 
 func (re *ResultExpr) Close() error {

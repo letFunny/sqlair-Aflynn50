@@ -17,12 +17,18 @@ type PreparedExpr struct {
 }
 
 // loc stores the type and field in which you can find an IO part.
+//
+//	type loc struct {
+//		typ   reflect.Type
+//		field field
+//	}
 type loc struct {
 	typ   reflect.Type
-	field field
+	field fielder
 }
 
-type typeNameToInfo map[string]*info
+// type typeNameToInfo map[string]*info
+type typeNameToInfo map[string]infoType
 
 // getKeys returns the keys of a string map in a deterministic order.
 func getKeys[T any](m map[string]T) []string {
@@ -107,30 +113,43 @@ type retBuilder struct {
 	locs []loc
 }
 
+// todo: add additional checks for map type name to be M wherever applicable
+
 // prepareExpr checks that an input or output part is correctly formatted, that
-// it corrosponds to known types and then generates the columns to go in the query.
+// it corresponds to known types and then generates the columns to go in the query.
 func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 
-	var info *info
-	var ok bool
+	//var info *info
+	//var ok bool
 
 	// res stores the list of columns to put in the query and their locations.
 	res := retBuilder{}
 
 	// add prepares a location and column.
 	add := func(typeName string, tag string, col fullName) error {
-		info, ok = ti[typeName]
+		in, ok := ti[typeName]
 		if !ok {
 			return fmt.Errorf(`type %s unknown, have: %s`, typeName, strings.Join(getKeys(ti), ", "))
 		}
-
-		f, ok := info.tagToField[tag]
-		if !ok {
-			return fmt.Errorf(`type %s has no %q db tag`, info.typ.Name(), tag)
+		switch i := in.(type) {
+		case *info:
+			f, ok := i.tagToField[tag]
+			if !ok {
+				return fmt.Errorf(`type %s has no %q db tag`, i.typ.Name(), tag)
+			}
+			res.cols = append(res.cols, col)
+			res.locs = append(res.locs, loc{i.typ, f})
+			return nil
+		case *mapInfo:
+			t := reflect.TypeOf(tag)
+			if i.Type().Key() != t {
+				return fmt.Errorf(`map type %s does not have key type %s, have type %s`, i.Type().Name(), t.Name(), i.Type().Key().Name())
+			}
+			res.cols = append(res.cols, col)
+			res.locs = append(res.locs, loc{i.typ, mapKey{typ: t, name: tag}})
+			return nil
 		}
-		res.cols = append(res.cols, col)
-		res.locs = append(res.locs, loc{info.typ, f})
-		return nil
+		return fmt.Errorf(`unindentified type info`)
 	}
 
 	// Check the expression is valid.
@@ -162,14 +181,19 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 		for _, t := range p.types {
 			if t.name == "*" {
 				// Generate columns for Star types.
-				info, ok = ti[t.prefix]
+				in, ok := ti[t.prefix]
 				if !ok {
 					return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, t.prefix, strings.Join(getKeys(ti), ", "))
 				}
-				for _, tag := range info.tags {
-					if err := add(t.prefix, tag, fullName{pref, tag}); err != nil {
-						return nil, nil, err
+				switch i := in.(type) {
+				case *info:
+					for _, tag := range i.tags {
+						if err := add(t.prefix, tag, fullName{pref, tag}); err != nil {
+							return nil, nil, err
+						}
 					}
+				case *mapInfo:
+					return nil, nil, fmt.Errorf(`map type with asterisk cannot be used when no column name is specified or column name is asterisk`)
 				}
 			} else {
 				// Generate Columns for none star types.
@@ -184,12 +208,21 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 	// 		   "(col1, col2) VALUES ($P.*)".
 	// There must only be a single type in this case.
 	if p.types[0].name == "*" {
-		for _, c := range p.cols {
-			if err := add(p.types[0].prefix, c.name, c); err != nil {
-				return nil, nil, err
-			}
+		in, ok := ti[p.types[0].prefix]
+		if !ok {
+			return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, p.types[0].prefix, strings.Join(getKeys(ti), ", "))
 		}
-		return res.cols, res.locs, nil
+		switch in.(type) {
+		case *info:
+			for _, c := range p.cols {
+				if err := add(p.types[0].prefix, c.name, c); err != nil {
+					return nil, nil, err
+				}
+			}
+			return res.cols, res.locs, nil
+		case *mapInfo:
+			return nil, nil, fmt.Errorf(`map type with asterisk cannot be used as input`)
+		}
 	}
 
 	// Case 3: Explicit columns and targets e.g. "(col1, col2) AS (&P.name, &P.id)" or
@@ -218,6 +251,14 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 
 	// Generate and save reflection info.
 	for _, arg := range args {
+		// Check if it's a map type.
+		if reflect.ValueOf(arg).Kind() == reflect.Map {
+			// todo: add check to see if the type name is M
+			t := reflect.TypeOf(arg)
+			ti[t.Name()] = &mapInfo{typ: reflect.TypeOf(arg)}
+			continue
+		}
+
 		info, err := typeInfo(arg)
 		if err != nil {
 			return nil, err

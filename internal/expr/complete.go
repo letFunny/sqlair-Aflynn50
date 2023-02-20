@@ -33,8 +33,25 @@ func (pe *PreparedExpr) Complete(args ...any) (*CompletedExpr, error) {
 		if !ok {
 			return nil, fmt.Errorf(`type %s not passed as a parameter`, in.typ.Name())
 		}
-		named := sql.Named("sqlair_"+strconv.Itoa(i), v.FieldByIndex(in.field.index).Interface())
-		qargs = append(qargs, named)
+
+		if in.typ.Kind() == reflect.Struct {
+			switch f := in.field.(type) {
+			case field:
+				named := sql.Named("sqlair_"+strconv.Itoa(i), v.FieldByIndex(f.index).Interface())
+				qargs = append(qargs, named)
+			case mapKey:
+				return nil, fmt.Errorf("internal error, field not found for struct type %s", in.typ.Name())
+			}
+		} else if in.typ.Kind() == reflect.Map {
+			// todo: add check for type name to be M
+			switch f := in.field.(type) {
+			case field:
+				return nil, fmt.Errorf("internal error, key not found for map type %s", in.typ.Name())
+			case mapKey:
+				named := sql.Named("sqlair_"+strconv.Itoa(i), v.MapIndex(reflect.ValueOf(f.name)).Interface())
+				qargs = append(qargs, named)
+			}
+		}
 	}
 
 	return &CompletedExpr{outputs: pe.outputs, SQL: pe.SQL, Args: qargs}, nil

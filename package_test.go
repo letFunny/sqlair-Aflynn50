@@ -141,7 +141,6 @@ CREATE TABLE address (
 	district text,
 	street text
 );
-
 `
 	drop := `
 drop table person;
