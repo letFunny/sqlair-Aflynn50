@@ -107,8 +107,6 @@ type retBuilder struct {
 	locs []loc
 }
 
-// todo: add additional checks for map type name to be M wherever applicable
-
 // prepareExpr checks that an input or output part is correctly formatted, that
 // it corresponds to known types and then generates the columns to go in the query.
 func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
@@ -216,7 +214,15 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 			}
 			return res.cols, res.locs, nil
 		case *mapInfo:
-			return nil, nil, fmt.Errorf(`map type with asterisk cannot be used as input`)
+			if !p.isOut {
+				return nil, nil, fmt.Errorf(`map type with asterisk cannot be used as input`)
+			}
+			for _, c := range p.cols {
+				if err := add(p.types[0].prefix, c.name, c); err != nil {
+					return nil, nil, err
+				}
+			}
+			return res.cols, res.locs, nil
 		}
 	}
 

@@ -34,8 +34,6 @@ type Manager struct {
 type District struct {
 }
 
-type M map[string]any
-
 var tests = []struct {
 	summary          string
 	input            string
@@ -477,7 +475,6 @@ func (s *ExprSuite) TestValidPrepare(c *C) {
 		}
 		c.Assert(preparedExpr.SQL, Equals, test.expected)
 	}
-
 }
 
 func (s *ExprSuite) TestInvalidPrepare(c *C) {

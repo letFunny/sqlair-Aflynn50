@@ -47,10 +47,5 @@ func CheckValidMType(mt reflect.Type) error {
 	if mt.Key() != reflect.TypeOf(s) {
 		return fmt.Errorf(`map type %s must have key type %s; found type %s`, mt.Name(), reflect.TypeOf(s).Name(), mt.Key().Name())
 	}
-	// Map must have interface{} values
-	var a any
-	if mt.Elem() != reflect.TypeOf(a) {
-		return fmt.Errorf(`map type %s must have value type %s; found type %s`, mt.Name(), reflect.TypeOf(a).Name(), mt.Elem().Name())
-	}
 	return nil
 }
