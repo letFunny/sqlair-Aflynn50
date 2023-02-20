@@ -42,6 +42,30 @@ var mTypeTests = []struct {
 	[]any{expr.M{"key": 100}},
 	"SELECT foo, bar, key AS _sqlair_0 FROM table WHERE foo = 'xx'",
 }, {
+	"single star output into single map key",
+	"SELECT * AS &M.key FROM person AS p WHERE foo = 'xx'",
+	"[Bypass[SELECT ] Output[[*] [M.key]] Bypass[ FROM person AS p WHERE foo = 'xx']]",
+	[]any{expr.M{"key": 100}},
+	"SELECT key AS _sqlair_0 FROM person AS p WHERE foo = 'xx'",
+}, {
+	"prefixed star output into single map key",
+	"SELECT p.* AS &M.key FROM person AS p WHERE foo = 'xx'",
+	"[Bypass[SELECT ] Output[[p.*] [M.key]] Bypass[ FROM person AS p WHERE foo = 'xx']]",
+	[]any{expr.M{"key": 100}},
+	"SELECT p.key AS _sqlair_0 FROM person AS p WHERE foo = 'xx'",
+}, {
+	"non-star non-prefixed output into single starred map",
+	"SELECT key AS &M.* FROM person AS p WHERE foo = 'xx'",
+	"[Bypass[SELECT ] Output[[key] [M.*]] Bypass[ FROM person AS p WHERE foo = 'xx']]",
+	[]any{expr.M{"key": 100}},
+	"SELECT key AS _sqlair_0 FROM person AS p WHERE foo = 'xx'",
+}, {
+	"non-star prefixed output into single starred map",
+	"SELECT p.key AS &M.* FROM person AS p WHERE foo = 'xx'",
+	"[Bypass[SELECT ] Output[[p.key] [M.*]] Bypass[ FROM person AS p WHERE foo = 'xx']]",
+	[]any{expr.M{"key": 100}},
+	"SELECT p.key AS _sqlair_0 FROM person AS p WHERE foo = 'xx'",
+}, {
 	"two outputs and quote",
 	"SELECT foo, &M.key, bar, baz, &Manager.manager_name FROM table WHERE foo = 'xx'",
 	"[Bypass[SELECT foo, ] Output[[] [M.key]] Bypass[, bar, baz, ] Output[[] [Manager.manager_name]] Bypass[ FROM table WHERE foo = 'xx']]",
@@ -125,6 +149,12 @@ var mTypeTests = []struct {
 	"[Bypass[INSERT INTO person ] Input[[*] [Person.address_id Person.name M.time]]]",
 	[]any{Person{}, expr.M{"time": int64(1234)}},
 	`INSERT INTO person (address_id, name, time) VALUES (@sqlair_0, @sqlair_1, @sqlair_2)`,
+}, {
+	"insert multi input into prefixed lone star",
+	"INSERT INTO person (p.*) VALUES ($Person.address_id, $Person.name, $M.time)",
+	"[Bypass[INSERT INTO person ] Input[[p.*] [Person.address_id Person.name M.time]]]",
+	[]any{Person{}, expr.M{"time": int64(1234)}},
+	`INSERT INTO person (p.address_id, p.name, p.time) VALUES (@sqlair_0, @sqlair_1, @sqlair_2)`,
 }, {
 	"input with no space",
 	"SELECT p.*, a.district FROM person AS p WHERE p.name=$M.name",
