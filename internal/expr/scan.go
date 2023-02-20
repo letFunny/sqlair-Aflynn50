@@ -91,8 +91,8 @@ func (re *ResultExpr) Next() (bool, error) {
 	rs := []any{}
 
 	for i, col := range cols {
-		if col == "_sqlair_"+strconv.Itoa(i) {
-			rs = append(rs, vs[i-offset])
+		if col == "_sqlair_"+strconv.Itoa(i-offset) {
+			rs = append(rs, vs[i])
 		} else {
 			offset++
 		}

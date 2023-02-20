@@ -33,6 +33,8 @@ type Person struct {
 	PostalCode string `db:"postcode,omitempty"`
 }
 
+type Manager Person
+
 func createExampleDB(create string, inserts []string) (*sql.DB, error) {
 	db, err := setupDB()
 	if err != nil {
@@ -186,6 +188,13 @@ func (s *PackageSuite) TestDecode(c *C) {
 		inputs:   []any{},
 		outputs:  [][]any{{&Person{}}, {&Person{}}, {&Person{}}, {&Person{PostalCode: "6000"}}},
 		expected: [][]any{{&Person{30, "Fred", "1000"}}, {&Person{20, "Mark", "1500"}}, {&Person{0, "Mary", "3500"}}, {&Person{35, "James", "4500"}}},
+	}, {
+		summery:  "select multiple with extras",
+		query:    "SELECT name, * AS (&Person.*, &Address.id, &Manager.*), id FROM person WHERE id = $Address.id",
+		types:    []any{Person{}, Address{}, Manager{}},
+		inputs:   []any{Address{ID: 30}},
+		outputs:  [][]any{{&Person{}, &Address{}, &Manager{}}},
+		expected: [][]any{{&Person{30, "Fred", "1000"}, &Address{ID: 30}, &Manager{30, "Fred", "1000"}}},
 	}}
 
 	drop, db, err := sqlairPersonAndAddressDB()
@@ -201,7 +210,7 @@ func (s *PackageSuite) TestDecode(c *C) {
 			c.Error(err)
 			continue
 		}
-		q, err := sqlairDB.Query(stmt)
+		q, err := sqlairDB.Query(stmt, t.inputs...)
 		if err != nil {
 			c.Error(err)
 			continue
