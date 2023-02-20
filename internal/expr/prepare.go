@@ -16,18 +16,12 @@ type PreparedExpr struct {
 	SQL     string
 }
 
-// loc stores the type and field in which you can find an IO part.
-//
-//	type loc struct {
-//		typ   reflect.Type
-//		field field
-//	}
+// loc stores the type, and a struct field or map key, in which you can find an IO part.
 type loc struct {
 	typ   reflect.Type
 	field fielder
 }
 
-// type typeNameToInfo map[string]*info
 type typeNameToInfo map[string]infoType
 
 // getKeys returns the keys of a string map in a deterministic order.
@@ -119,9 +113,6 @@ type retBuilder struct {
 // it corresponds to known types and then generates the columns to go in the query.
 func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 
-	//var info *info
-	//var ok bool
-
 	// res stores the list of columns to put in the query and their locations.
 	res := retBuilder{}
 
@@ -141,10 +132,14 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 			res.locs = append(res.locs, loc{i.typ, f})
 			return nil
 		case *mapInfo:
-			t := reflect.TypeOf(tag)
-			if i.Type().Key() != t {
-				return fmt.Errorf(`map type %s does not have key type %s, have type %s`, i.Type().Name(), t.Name(), i.Type().Key().Name())
+			if err := CheckValidMType(i.Type()); err != nil {
+				return err
 			}
+			var t reflect.Type
+			if t, ok = i.kvtypes[tag]; !ok {
+				return fmt.Errorf(`unknown key name %s for M type when preparing expression`, tag)
+			}
+
 			res.cols = append(res.cols, col)
 			res.locs = append(res.locs, loc{i.typ, mapKey{typ: t, name: tag}})
 			return nil
@@ -253,9 +248,18 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 	for _, arg := range args {
 		// Check if it's a map type.
 		if reflect.ValueOf(arg).Kind() == reflect.Map {
-			// todo: add check to see if the type name is M
 			t := reflect.TypeOf(arg)
-			ti[t.Name()] = &mapInfo{typ: reflect.TypeOf(arg)}
+			// Check if the map is an M type
+			if err := CheckValidMType(t); err != nil {
+				return nil, err
+			}
+			m := arg.(M)
+			kvpairs := make(keyValueTypes)
+			for k := range m {
+				kvpairs[k] = reflect.TypeOf(m[k])
+			}
+
+			ti[t.Name()] = &mapInfo{typ: t, kvtypes: kvpairs}
 			continue
 		}
 
