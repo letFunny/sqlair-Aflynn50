@@ -5,7 +5,7 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-var mTypeTests = []struct {
+var mTypeSupportedValidTests = []struct {
 	summary          string
 	input            string
 	expectedParsed   string
@@ -169,9 +169,9 @@ var mTypeTests = []struct {
 	`UPDATE person SET person.address_id = @sqlair_0 WHERE person.id = @sqlair_1`,
 }}
 
-func (s *ExprSuite) TestMtypeParsePrepare(c *C) {
+func (s *ExprSuite) TestMtypeSupportedValidParsePrepare(c *C) {
 	parser := expr.NewParser()
-	for i, test := range mTypeTests {
+	for i, test := range mTypeSupportedValidTests {
 		var (
 			parsedExpr   *expr.ParsedExpr
 			preparedExpr *expr.PreparedExpr
