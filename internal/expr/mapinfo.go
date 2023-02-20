@@ -7,21 +7,13 @@ import (
 
 type M map[string]any
 
-// type mapKeyValuePair struct {
-// 	// key name
-// 	name string
-// 	// value type
-// 	typ reflect.Type
-// }
-
 type keyValueTypes map[string]reflect.Type
 
 type mapInfo struct {
 	// map's type
 	typ reflect.Type
 
-	// types of values this map is expected to get
-	//vtypes []mapKeyValuePair
+	// key-value pairs this map is expected to retrieve
 	kvtypes keyValueTypes
 }
 
