@@ -8,7 +8,7 @@ import (
 
 type ResultExpr struct {
 	outputs []loc
-	rows    *sql.Rows // SHOULD BE PRIVATE, CHANGE BACK
+	rows    *sql.Rows
 	// rs stores the results from the current row
 	rs []any
 }

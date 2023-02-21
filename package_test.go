@@ -195,6 +195,13 @@ func (s *PackageSuite) TestDecode(c *C) {
 		inputs:   []any{Address{ID: 30}},
 		outputs:  [][]any{{&Person{}, &Address{}, &Manager{}}},
 		expected: [][]any{{&Person{30, "Fred", "1000"}, &Address{ID: 30}, &Manager{30, "Fred", "1000"}}},
+	}, {
+		summery:  "select with renaming",
+		query:    "SELECT (name, postcode) AS (&Address.street, &Address.district) FROM person WHERE id = $Manager.id",
+		types:    []any{Address{}, Manager{}},
+		inputs:   []any{Manager{ID: 30}},
+		outputs:  [][]any{{&Address{}}},
+		expected: [][]any{{&Address{Street: "Fred", District: "1000"}}},
 	}}
 
 	drop, db, err := sqlairPersonAndAddressDB()
