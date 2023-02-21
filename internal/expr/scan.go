@@ -150,47 +150,51 @@ func setValue(dest reflect.Value, fInfo fielder, val any) error {
 	var isZero bool
 
 	v := reflect.ValueOf(val)
+	typ := fInfo.Type()
+	name := fInfo.Name()
 
-	if dest.Type().Kind() == reflect.Struct {
-		switch f := fInfo.(type) {
-		case field:
-			if val == nil {
-				if f.omitEmpty {
-					return nil
-				}
-				isZero = true
-				v = reflect.Zero(f.typ)
-			}
-			if !isZero && v.Type() != f.typ {
-				return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), f.name, f.typ.Name())
-			}
-			itsField := dest.FieldByIndex(f.index)
-			if !itsField.CanSet() {
-				return fmt.Errorf("cannot set field %#v. CanAddr=%v", f.name, itsField.CanAddr())
-			}
-			itsField.Set(v)
-			return nil
-		case mapKey:
+	switch dest.Type().Kind() {
+	case reflect.Struct:
+		f, ok := fInfo.(field)
+		if !ok {
 			return fmt.Errorf("internal error: argument of type %#v has no member of type %#v", dest.Type(), f)
 		}
-	} else if dest.Type().Kind() == reflect.Map {
-		switch m := fInfo.(type) {
-		case field:
-			return fmt.Errorf("internal error: argument of type %#v has no member of type %#v", dest.Type(), m)
-		case mapKey:
-			if val == nil {
-				isZero = true
-				v = reflect.Zero(m.typ)
+
+		if val == nil {
+			if f.omitEmpty {
+				return nil
 			}
-			if !isZero && v.Type() != m.typ {
-				return fmt.Errorf("result of type %#v but map value %#v is type %#v", v.Type().Name(), m.name, m.typ.Name())
-			}
-			itsKey := dest.MapIndex(reflect.ValueOf(m.name))
-			itsKey.Set(v)
-			return nil
+			isZero = true
+			v = reflect.Zero(typ)
 		}
+		if !isZero && v.Type() != typ {
+			return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), name, typ.Name())
+		}
+		itsField := dest.FieldByIndex(f.index)
+		if !itsField.CanSet() {
+			return fmt.Errorf("cannot set field %#v. CanAddr=%v", f.name, itsField.CanAddr())
+		}
+		itsField.Set(v)
+		return nil
+	case reflect.Map:
+		m, ok := fInfo.(mapKey)
+		if !ok {
+			return fmt.Errorf("internal error: argument of type %#v has no member of type %#v", dest.Type(), m)
+		}
+
+		if val == nil {
+			isZero = true
+			v = reflect.Zero(typ)
+		}
+		if !isZero && v.Type() != typ {
+			return fmt.Errorf("result of type %#v but map value %#v is type %#v", v.Type().Name(), name, typ.Name())
+		}
+		itsKey := dest.MapIndex(reflect.ValueOf(name))
+		itsKey.Set(v)
+		return nil
+	default:
+		return fmt.Errorf("unsupported argument of kind %#v received when setting its value", dest.Type().Kind())
 	}
-	return fmt.Errorf("unsupported argument of kind %#v received when setting its value", dest.Type().Kind())
 }
 
 func (re *ResultExpr) Close() error {
