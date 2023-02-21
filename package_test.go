@@ -202,6 +202,13 @@ func (s *PackageSuite) TestDecode(c *C) {
 		inputs:   []any{Manager{ID: 30}},
 		outputs:  [][]any{{&Address{}}},
 		expected: [][]any{{&Address{Street: "Fred", District: "1000"}}},
+	}, {
+		summery:  "select into star struct",
+		query:    "SELECT (name, postcode) AS &Person.* FROM person WHERE postcode IN ($Manager.postcode, $Address.district)",
+		types:    []any{Person{}, Address{}, Manager{}},
+		inputs:   []any{Manager{PostalCode: "1000"}, Address{District: "2000"}},
+		outputs:  [][]any{{&Person{}}},
+		expected: [][]any{{&Person{Fullname: "Fred", PostalCode: "1000"}}},
 	}}
 
 	drop, db, err := sqlairPersonAndAddressDB()
