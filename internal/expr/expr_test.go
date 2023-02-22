@@ -599,7 +599,7 @@ func (s *ExprSuite) TestCompleteMissingParameter(c *C) {
 		c.Fatal(err)
 	}
 	_, err = preparedExpr.Complete(Address{Street: "Dead end road"})
-	c.Assert(err, ErrorMatches, `type Person not passed as a parameter`)
+	c.Assert(err, ErrorMatches, `parameter issue: type expr_test.Person not found, have: expr_test.Address`)
 }
 
 func (s *ExprSuite) TestCompleteNilType(c *C) {
@@ -614,7 +614,7 @@ func (s *ExprSuite) TestCompleteNilType(c *C) {
 		c.Fatal(err)
 	}
 	_, err = preparedExpr.Complete(nil, Person{Fullname: "Monty Bingles"})
-	c.Assert(err, ErrorMatches, "nil parameter")
+	c.Assert(err, ErrorMatches, "parameter issue: nil parameter")
 }
 
 func (s *ExprSuite) TestCompleteDifferentType(c *C) {
@@ -637,5 +637,5 @@ func (s *ExprSuite) TestCompleteDifferentType(c *C) {
 		c.Fatal(err)
 	}
 	_, err = preparedExpr.Complete(shadowedP)
-	c.Assert(err, ErrorMatches, `type Person not passed as a parameter`)
+	c.Assert(err, ErrorMatches, `parameter issue: type expr_test.Person not found, have: expr_test.Person`)
 }
