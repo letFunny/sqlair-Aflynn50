@@ -620,7 +620,6 @@ func (s *ExprSuite) TestCompleteNilType(c *C) {
 func (s *ExprSuite) TestCompleteDifferentType(c *C) {
 	sql := "SELECT street FROM t WHERE y = $Person.name"
 	outerP := Person{}
-	//type Person struct{}
 	type Person struct {
 		ID         int    `db:"id"`
 		Fullname   string `db:"name"`

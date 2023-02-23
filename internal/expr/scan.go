@@ -132,6 +132,20 @@ func (re *ResultExpr) Decode(args ...any) (err error) {
 func (re *ResultExpr) decodeValue(v reflect.Value) error {
 	typeFound := false
 	for i, outDest := range re.outputs {
+		if outDest.typ.Kind() == reflect.Map {
+			if err := CheckValidMapType(outDest.typ); err != nil {
+				return err
+			}
+			if err := CheckValidMapType(v.Type()); err != nil {
+				return err
+			}
+			typeFound = true
+			err := setValue(v, outDest.field, re.rs[i])
+			if err != nil {
+				return fmt.Errorf("map %s: %s", v.Type().Name(), err)
+			}
+		}
+
 		if outDest.typ == v.Type() {
 			typeFound = true
 			err := setValue(v, outDest.field, re.rs[i])
@@ -150,8 +164,9 @@ func setValue(dest reflect.Value, fInfo fielder, val any) error {
 	var isZero bool
 
 	v := reflect.ValueOf(val)
-	typ := fInfo.Type()
 	name := fInfo.Name()
+
+	fmt.Printf("%s, %v\n", name, dest.Type().Kind())
 
 	switch dest.Type().Kind() {
 	case reflect.Struct:
@@ -165,10 +180,10 @@ func setValue(dest reflect.Value, fInfo fielder, val any) error {
 				return nil
 			}
 			isZero = true
-			v = reflect.Zero(typ)
+			v = reflect.Zero(f.typ)
 		}
-		if !isZero && v.Type() != typ {
-			return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), name, typ.Name())
+		if !isZero && v.Type() != f.typ {
+			return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), name, f.typ.Name())
 		}
 		itsField := dest.FieldByIndex(f.index)
 		if !itsField.CanSet() {
@@ -182,15 +197,13 @@ func setValue(dest reflect.Value, fInfo fielder, val any) error {
 			return fmt.Errorf("internal error: argument of type %#v has no member of type %#v", dest.Type(), m)
 		}
 
-		if val == nil {
-			isZero = true
-			v = reflect.Zero(typ)
+		fmt.Printf("%s\n", m.name)
+		if val != nil {
+			fmt.Printf("%s\n", m.name)
+			itsKey := dest.MapIndex(reflect.ValueOf(m.name))
+			itsKey.Set(v)
 		}
-		if !isZero && v.Type() != typ {
-			return fmt.Errorf("result of type %#v but map value %#v is type %#v", v.Type().Name(), name, typ.Name())
-		}
-		itsKey := dest.MapIndex(reflect.ValueOf(name))
-		itsKey.Set(v)
+		// todo: what would be the zero value of a map value whose type we don't know ?
 		return nil
 	default:
 		return fmt.Errorf("unsupported argument of kind %#v received when setting its value", dest.Type().Kind())

@@ -9,7 +9,7 @@ type infoType interface {
 }
 
 type fielder interface {
-	Type() reflect.Type
+	//Type() reflect.Type
 	Name() string
 }
 
@@ -45,6 +45,6 @@ func (f field) Name() string {
 	return f.name
 }
 
-func (f field) Type() reflect.Type {
-	return f.typ
-}
+// func (f field) Type() reflect.Type {
+// 	return f.typ
+// }
