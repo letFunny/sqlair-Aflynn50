@@ -22,7 +22,8 @@ type loc struct {
 	field fielder
 }
 
-type typeNameToInfo map[string]infoType
+// type typeNameToInfo map[string]infoType
+type typeNameToInfo map[string]*info
 
 // getKeys returns the keys of a string map in a deterministic order.
 func getKeys[T any](m map[string]T) []string {
@@ -110,18 +111,19 @@ type retBuilder struct {
 // prepareExpr checks that an input or output part is correctly formatted, that
 // it corresponds to known types and then generates the columns to go in the query.
 func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
-
 	// res stores the list of columns to put in the query and their locations.
 	res := retBuilder{}
 
+	mn := reflect.TypeOf(M{}).Name()
+
 	// add prepares a location and column.
 	add := func(typeName string, tag string, col fullName) error {
-		in, ok := ti[typeName]
+		info, ok := ti[typeName]
 
 		// Could not find a registered type info
 		if !ok {
 			// Handle the M type
-			if typeName == reflect.TypeOf(M{}).Name() {
+			if typeName == mn {
 				res.cols = append(res.cols, col)
 				res.locs = append(res.locs, loc{reflect.TypeOf(M{}), mapKey{name: tag}})
 				return nil
@@ -130,13 +132,12 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 			return fmt.Errorf(`type %s unknown, have: %s`, typeName, strings.Join(getKeys(ti), ", "))
 		}
 
-		i := in.(*info)
-		f, ok := i.tagToField[tag]
+		f, ok := info.tagToField[tag]
 		if !ok {
-			return fmt.Errorf(`type %s has no %q db tag`, i.typ.Name(), tag)
+			return fmt.Errorf(`type %s has no %q db tag`, info.typ.Name(), tag)
 		}
 		res.cols = append(res.cols, col)
-		res.locs = append(res.locs, loc{i.typ, f})
+		res.locs = append(res.locs, loc{info.typ, f})
 		return nil
 	}
 
@@ -171,14 +172,13 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 				// Generate columns for Star types.
 				in, ok := ti[t.prefix]
 				if !ok {
-					if t.prefix == reflect.TypeOf(M{}).Name() {
+					if t.prefix == mn {
 						return nil, nil, fmt.Errorf(`map type with asterisk cannot be used when no column name is specified or column name is asterisk`)
 					}
 					return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, t.prefix, strings.Join(getKeys(ti), ", "))
 				}
 
-				i := in.(*info)
-				for _, tag := range i.tags {
+				for _, tag := range in.tags {
 					if err := add(t.prefix, tag, fullName{pref, tag}); err != nil {
 						return nil, nil, err
 					}
@@ -198,7 +198,7 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 	if p.types[0].name == "*" {
 		_, ok := ti[p.types[0].prefix]
 		if !ok {
-			if p.types[0].prefix == reflect.TypeOf(M{}).Name() {
+			if p.types[0].prefix == mn {
 				if !p.isOut {
 					return nil, nil, fmt.Errorf(`map type with asterisk cannot be used as input`)
 				}

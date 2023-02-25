@@ -153,6 +153,7 @@ drop table address;
 		"INSERT INTO person VALUES ('Mark', 20, '1500', 'mark@email.com');",
 		"INSERT INTO person VALUES ('Mary', NULL, '3500', 'mary@email.com');",
 		"INSERT INTO person VALUES ('James', 35, '4500', 'james@email.com');",
+		"INSERT INTO person VALUES ('Sam', 32, '1000', 'sam@email.com');",
 		"INSERT INTO address VALUES (25, 'Happy Land', 'Main Street');",
 		"INSERT INTO address VALUES (30, 'Sad World', 'Church Road');",
 		"INSERT INTO address VALUES (10, 'Ambivilent Commons', 'Station Lane');",

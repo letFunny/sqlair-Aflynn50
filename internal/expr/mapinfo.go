@@ -7,24 +7,7 @@ import (
 
 type M map[string]any
 
-//type keyValueTypes map[string]reflect.Type
-
-// type mapInfo struct {
-// 	// map's type
-// 	typ reflect.Type
-
-// 	// key-value pairs this map is expected to retrieve
-// 	kvtypes keyValueTypes
-// }
-
-// func (m *mapInfo) Type() reflect.Type {
-// 	return m.typ
-// }
-
 type mapKey struct {
-	// Type of the value that this key maps to
-	//typ reflect.Type
-
 	// Key name
 	name string
 }
@@ -33,11 +16,12 @@ func (mk mapKey) Name() string {
 	return mk.name
 }
 
-// func (mk mapKey) Type() reflect.Type {
-// 	return mk.typ
-// }
-
+// CheckValidMapType takes a reflect type and checks whether it is a map, the type name is M, and the key type of the map is string, and
+// returns an error if any of these conditions is not true.
 func CheckValidMapType(mt reflect.Type) error {
+	if mt.Kind() != reflect.Map {
+		return fmt.Errorf(`input type %s is not a map`, mt.Name())
+	}
 	// Map type name must be M
 	if mt.Name() != reflect.TypeOf(M{}).Name() {
 		return fmt.Errorf(`map type of name %s found, expected %s`, mt.Name(), reflect.TypeOf(M{}).Name())
@@ -48,4 +32,10 @@ func CheckValidMapType(mt reflect.Type) error {
 		return fmt.Errorf(`map type %s must have key type %s; found type %s`, mt.Name(), reflect.TypeOf(s).Name(), mt.Key().Name())
 	}
 	return nil
+}
+
+// IsValidMapType takes a reflect type and checks whether it is a map, the type name is M, and the key type of the map is string.
+func IsValidMType(mt reflect.Type) bool {
+	var s string
+	return mt.Kind() == reflect.Map && mt.Name() == reflect.TypeOf(M{}).Name() && mt.Key() == reflect.TypeOf(s)
 }

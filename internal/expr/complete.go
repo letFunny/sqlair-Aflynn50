@@ -31,15 +31,19 @@ func (pe *PreparedExpr) Complete(args ...any) (ce *CompletedExpr, err error) {
 		}
 		v := reflect.ValueOf(arg)
 		t := reflect.TypeOf(arg)
-		if t.Kind() == reflect.Struct {
+
+		switch t.Kind() {
+		case reflect.Struct:
 			tv[t] = v
-		}
-		if t.Kind() == reflect.Map {
+		case reflect.Map:
 			if err := CheckValidMapType(t); err != nil {
 				return nil, err
 			}
 			tv[reflect.TypeOf(M{})] = reflect.ValueOf(arg)
+		default:
+			return nil, fmt.Errorf("unsupported type; need a Struct or map M")
 		}
+
 		typeNames = append(typeNames, t.String())
 	}
 
@@ -51,24 +55,21 @@ func (pe *PreparedExpr) Complete(args ...any) (ce *CompletedExpr, err error) {
 		if !ok {
 			return nil, fmt.Errorf(`type %s not found, have: %s`, in.typ.String(), strings.Join(typeNames, ", "))
 		}
-		switch in.typ.Kind() {
-		case reflect.Struct:
+
+		switch in.field.(type) {
+		case field:
 			f := in.field.(field)
 			named := sql.Named("sqlair_"+strconv.Itoa(i), v.FieldByIndex(f.index).Interface())
 			qargs = append(qargs, named)
-		case reflect.Map:
-			if err := CheckValidMapType(in.typ); err != nil {
-				return nil, err
-			}
+		case mapKey:
 			m := in.field.(mapKey)
 			if v.MapIndex(reflect.ValueOf(m.name)) == reflect.Value(reflect.ValueOf(nil)) {
 				return nil, fmt.Errorf(`key in M-type input does not match query key %s`, m.name)
 			}
-
 			named := sql.Named("sqlair_"+strconv.Itoa(i), v.MapIndex(reflect.ValueOf(m.name)).Interface())
 			qargs = append(qargs, named)
 		default:
-			return nil, fmt.Errorf("field not found for struct type %s", in.typ.Name())
+			return nil, fmt.Errorf("field type %s not supported", in.typ.Name())
 		}
 	}
 

@@ -44,6 +44,7 @@ func (re *ResultExpr) All() ([][]any, error) {
 
 	for {
 		ok, err := re.Next()
+
 		if err != nil {
 			return [][]any{}, err
 		} else if !ok {
@@ -52,9 +53,25 @@ func (re *ResultExpr) All() ([][]any, error) {
 
 		rs := []any{}
 		for _, t := range ts {
+
+			if t.Kind() == reflect.Map {
+				m := &M{}
+				rm := reflect.ValueOf(m)
+				r := rm.Elem()
+
+				err := re.decodeValue(r)
+				if err != nil {
+					return [][]any{}, err
+				}
+				rs = append(rs, *m)
+				continue
+			}
+
 			rp := reflect.New(t)
+
 			// We need to unwrap the struct inside the interface{}.
 			r := rp.Elem()
+
 			err := re.decodeValue(r)
 			if err != nil {
 				return [][]any{}, err
@@ -132,14 +149,9 @@ func (re *ResultExpr) Decode(args ...any) (err error) {
 func (re *ResultExpr) decodeValue(v reflect.Value) error {
 	typeFound := false
 	for i, outDest := range re.outputs {
-		if outDest.typ.Kind() == reflect.Map {
-			if err := CheckValidMapType(outDest.typ); err != nil {
-				return err
-			}
-			if err := CheckValidMapType(v.Type()); err != nil {
-				return err
-			}
+		if IsValidMType(outDest.typ) && IsValidMType(v.Type()) {
 			typeFound = true
+
 			err := setValue(v, outDest.field, re.rs[i])
 			if err != nil {
 				return fmt.Errorf("map %s: %s", v.Type().Name(), err)
@@ -166,8 +178,6 @@ func setValue(dest reflect.Value, fInfo fielder, val any) error {
 	v := reflect.ValueOf(val)
 	name := fInfo.Name()
 
-	fmt.Printf("%s, %v\n", name, dest.Type().Kind())
-
 	switch dest.Type().Kind() {
 	case reflect.Struct:
 		f, ok := fInfo.(field)
@@ -187,7 +197,7 @@ func setValue(dest reflect.Value, fInfo fielder, val any) error {
 		}
 		itsField := dest.FieldByIndex(f.index)
 		if !itsField.CanSet() {
-			return fmt.Errorf("cannot set field %#v. CanAddr=%v", f.name, itsField.CanAddr())
+			return fmt.Errorf("cannot set field %#v. CanAddr=%v", name, itsField.CanAddr())
 		}
 		itsField.Set(v)
 		return nil
@@ -197,13 +207,20 @@ func setValue(dest reflect.Value, fInfo fielder, val any) error {
 			return fmt.Errorf("internal error: argument of type %#v has no member of type %#v", dest.Type(), m)
 		}
 
-		fmt.Printf("%s\n", m.name)
-		if val != nil {
-			fmt.Printf("%s\n", m.name)
-			itsKey := dest.MapIndex(reflect.ValueOf(m.name))
-			itsKey.Set(v)
+		if val == nil {
+			isZero = true
+			// todo: This is probably dodgy - correct this
+			x := (any)(nil)
+			v = reflect.Zero(reflect.TypeOf(x))
 		}
-		// todo: what would be the zero value of a map value whose type we don't know ?
+
+		k := reflect.ValueOf(m.name)
+
+		if !dest.CanSet() {
+			return fmt.Errorf("cannot set mapkey %#v", name)
+		}
+
+		dest.SetMapIndex(k, v)
 		return nil
 	default:
 		return fmt.Errorf("unsupported argument of kind %#v received when setting its value", dest.Type().Kind())

@@ -4,10 +4,6 @@ import (
 	"reflect"
 )
 
-type infoType interface {
-	Type() reflect.Type
-}
-
 type fielder interface {
 	//Type() reflect.Type
 	Name() string
@@ -37,14 +33,6 @@ type info struct {
 	tagToField map[string]field
 }
 
-func (in *info) Type() reflect.Type {
-	return in.typ
-}
-
 func (f field) Name() string {
 	return f.name
 }
-
-// func (f field) Type() reflect.Type {
-// 	return f.typ
-// }
