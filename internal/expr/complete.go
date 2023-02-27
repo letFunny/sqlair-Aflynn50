@@ -24,6 +24,10 @@ func (pe *PreparedExpr) Complete(args ...any) (ce *CompletedExpr, err error) {
 	}()
 
 	var tv = make(map[reflect.Type]reflect.Value)
+
+	// var m map[string]any
+	// var foundMap bool
+
 	var typeNames []string
 	for _, arg := range args {
 		if arg == nil {
@@ -39,9 +43,15 @@ func (pe *PreparedExpr) Complete(args ...any) (ce *CompletedExpr, err error) {
 			if err := CheckValidMapType(t); err != nil {
 				return nil, err
 			}
-			tv[reflect.TypeOf(M{})] = reflect.ValueOf(arg)
+
+			tv[reflect.TypeOf(M{})] = v
+			// m = arg.(map[string]any)
+			// foundMap = true
+
+			// tv[reflect.TypeOf(M{})] = reflect.ValueOf(m)
+
 		default:
-			return nil, fmt.Errorf("unsupported type; need a Struct or map M")
+			return nil, fmt.Errorf("unsupported type: need a struct or map M")
 		}
 
 		typeNames = append(typeNames, t.String())
@@ -49,6 +59,8 @@ func (pe *PreparedExpr) Complete(args ...any) (ce *CompletedExpr, err error) {
 
 	// Query parameteres.
 	qargs := []any{}
+
+	// var foundMapKey bool
 
 	for i, in := range pe.inputs {
 		v, ok := tv[in.typ]
@@ -63,15 +75,32 @@ func (pe *PreparedExpr) Complete(args ...any) (ce *CompletedExpr, err error) {
 			qargs = append(qargs, named)
 		case mapKey:
 			m := in.field.(mapKey)
+			// foundMapKey = true
+			// if foundMap {
+			// 	v, ok := m[f.name]
+			// 	if !ok {
+			// 		return nil, fmt.Errorf(`key %q not found in map`, f.name)
+			// 	}
+			// 	named := sql.Named("sqlair_"+strconv.Itoa(i), v)
+			// 	qargs = append(qargs, named)
+			// }
+
 			if v.MapIndex(reflect.ValueOf(m.name)) == reflect.Value(reflect.ValueOf(nil)) {
-				return nil, fmt.Errorf(`key in M-type input does not match query key %s`, m.name)
+				return nil, fmt.Errorf(`key %q not found in map`, m.name)
 			}
 			named := sql.Named("sqlair_"+strconv.Itoa(i), v.MapIndex(reflect.ValueOf(m.name)).Interface())
 			qargs = append(qargs, named)
 		default:
-			return nil, fmt.Errorf("field type %s not supported", in.typ.Name())
+			return nil, fmt.Errorf("internal error: field type %s not supported", in.typ.Name())
 		}
 	}
+
+	// if !foundMap && foundMapKey {
+	// 	return nil, fmt.Errorf(`map key found, but there is no map input`)
+	// }
+	// if foundMap && !foundMapKey {
+	// 	return nil, fmt.Errorf(`map input received but there is no matching map key`)
+	// }
 
 	return &CompletedExpr{outputs: pe.outputs, SQL: pe.SQL, Args: qargs}, nil
 }
