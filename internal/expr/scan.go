@@ -52,25 +52,17 @@ func (re *ResultExpr) All() ([][]any, error) {
 		}
 
 		rs := []any{}
+		var r reflect.Value
 		for _, t := range ts {
-
 			if t.Kind() == reflect.Map {
 				m := &M{}
 				rm := reflect.ValueOf(m)
-				r := rm.Elem()
-
-				err := re.decodeValue(r)
-				if err != nil {
-					return [][]any{}, err
-				}
-				rs = append(rs, *m)
-				continue
+				r = rm.Elem()
+			} else {
+				rp := reflect.New(t)
+				// We need to unwrap the struct inside the interface{}.
+				r = rp.Elem()
 			}
-
-			rp := reflect.New(t)
-
-			// We need to unwrap the struct inside the interface{}.
-			r := rp.Elem()
 
 			err := re.decodeValue(r)
 			if err != nil {
@@ -148,24 +140,18 @@ func (re *ResultExpr) Decode(args ...any) (err error) {
 // corresponding to columns in current row of the query results.
 func (re *ResultExpr) decodeValue(v reflect.Value) error {
 	typeFound := false
+	validM := IsValidMType(v.Type())
+
 	for i, outDest := range re.outputs {
-		if IsValidMType(outDest.typ) && IsValidMType(v.Type()) {
-			typeFound = true
-
-			err := setValue(v, outDest.field, re.rs[i])
-			if err != nil {
-				return fmt.Errorf("map %s: %s", v.Type().Name(), err)
-			}
-		}
-
-		if outDest.typ == v.Type() {
+		if outDest.typ == v.Type() || outDest.typ.Name() == "M" && validM {
 			typeFound = true
 			err := setValue(v, outDest.field, re.rs[i])
 			if err != nil {
-				return fmt.Errorf("struct %s: %s", v.Type().Name(), err)
+				return fmt.Errorf("type %s: %s", v.Type().Name(), err)
 			}
 		}
 	}
+
 	if !typeFound {
 		return fmt.Errorf("no output expression of type %s", v.Type().Name())
 	}
@@ -178,11 +164,10 @@ func setValue(dest reflect.Value, fInfo fielder, val any) error {
 	v := reflect.ValueOf(val)
 	name := fInfo.Name()
 
-	switch dest.Type().Kind() {
-	case reflect.Struct:
-		f, ok := fInfo.(field)
-		if !ok {
-			return fmt.Errorf("internal error: argument of type %#v has no member of type %#v", dest.Type(), f)
+	switch f := fInfo.(type) {
+	case field:
+		if dest.Type().Kind() != reflect.Struct {
+			return fmt.Errorf("internal error: field of type %#v but type %#v is not a struct", f, dest.Type())
 		}
 
 		if val == nil {
@@ -201,20 +186,12 @@ func setValue(dest reflect.Value, fInfo fielder, val any) error {
 		}
 		itsField.Set(v)
 		return nil
-	case reflect.Map:
-		m, ok := fInfo.(mapKey)
-		if !ok {
-			return fmt.Errorf("internal error: argument of type %#v has no member of type %#v", dest.Type(), m)
+	case mapKey:
+		if dest.Type().Kind() != reflect.Map {
+			return fmt.Errorf("internal error: key of type %#v but type %#v is not a map", f, dest.Type())
 		}
 
-		if val == nil {
-			isZero = true
-			// todo: This is probably dodgy - correct this
-			x := (any)(nil)
-			v = reflect.Zero(reflect.TypeOf(x))
-		}
-
-		k := reflect.ValueOf(m.name)
+		k := reflect.ValueOf(f.name)
 
 		if !dest.CanSet() {
 			return fmt.Errorf("cannot set mapkey %#v", name)
@@ -223,7 +200,7 @@ func setValue(dest reflect.Value, fInfo fielder, val any) error {
 		dest.SetMapIndex(k, v)
 		return nil
 	default:
-		return fmt.Errorf("unsupported argument of kind %#v received when setting its value", dest.Type().Kind())
+		return fmt.Errorf("unsupported field for type %#v when setting its value", dest.Type())
 	}
 }
 

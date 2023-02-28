@@ -114,8 +114,6 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 	// res stores the list of columns to put in the query and their locations.
 	res := retBuilder{}
 
-	mn := reflect.TypeOf(M{}).Name()
-
 	// add prepares a location and column.
 	add := func(typeName string, tag string, col fullName) error {
 		info, ok := ti[typeName]
@@ -123,7 +121,7 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 		// Could not find a registered type info
 		if !ok {
 			// Handle the M type
-			if typeName == mn {
+			if typeName == "M" {
 				res.cols = append(res.cols, col)
 				res.locs = append(res.locs, loc{reflect.TypeOf(M{}), mapKey{name: tag}})
 				return nil
@@ -170,15 +168,15 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 		for _, t := range p.types {
 			if t.name == "*" {
 				// Generate columns for Star types.
-				in, ok := ti[t.prefix]
+				info, ok := ti[t.prefix]
 				if !ok {
-					if t.prefix == mn {
+					if t.prefix == "M" {
 						return nil, nil, fmt.Errorf(`map type with asterisk cannot be used when no column name is specified or column name is asterisk`)
 					}
 					return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, t.prefix, strings.Join(getKeys(ti), ", "))
 				}
 
-				for _, tag := range in.tags {
+				for _, tag := range info.tags {
 					if err := add(t.prefix, tag, fullName{pref, tag}); err != nil {
 						return nil, nil, err
 					}
@@ -198,18 +196,12 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 	if p.types[0].name == "*" {
 		_, ok := ti[p.types[0].prefix]
 		if !ok {
-			if p.types[0].prefix == mn {
-				if !p.isOut {
-					return nil, nil, fmt.Errorf(`map type with asterisk cannot be used as input`)
-				}
-				for _, c := range p.cols {
-					if err := add(p.types[0].prefix, c.name, c); err != nil {
-						return nil, nil, err
-					}
-				}
-				return res.cols, res.locs, nil
+			if p.types[0].prefix != "M" {
+				return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, p.types[0].prefix, strings.Join(getKeys(ti), ", "))
 			}
-			return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, p.types[0].prefix, strings.Join(getKeys(ti), ", "))
+			if !p.isOut {
+				return nil, nil, fmt.Errorf(`map type with asterisk cannot be used as input`)
+			}
 		}
 
 		for _, c := range p.cols {

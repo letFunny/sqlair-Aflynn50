@@ -360,13 +360,13 @@ func (s *ExprSuite) TestCompleteWithMapWrongKey(c *C) {
 		[]any{Address{}},
 		[]any{sqlair.M{"fullname": "Jimany Johnson"}},
 		[]any{sql.Named("sqlair_0", "Jimany Johnson")},
-		"parameter issue: key in M-type input does not match query key Fullname",
+		"parameter issue: key \"Fullname\" not found in map",
 	}, {
 		"SELECT foo FROM t WHERE x = $M.street, y = $Person.id",
 		[]any{Person{}},
 		[]any{Person{ID: 666}, sqlair.M{"Street": "Highway to Hell"}},
 		[]any{sql.Named("sqlair_0", "Highway to Hell"), sql.Named("sqlair_1", 666)},
-		"parameter issue: key in M-type input does not match query key street",
+		"parameter issue: key \"street\" not found in map",
 	}}
 	for i, test := range testList {
 		fmt.Printf("Test %d\n", i)

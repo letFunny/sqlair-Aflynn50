@@ -36,3 +36,16 @@ type info struct {
 func (f field) Name() string {
 	return f.name
 }
+
+type M map[string]any
+
+var mType = reflect.TypeOf(M{})
+
+type mapKey struct {
+	// Key name
+	name string
+}
+
+func (mk mapKey) Name() string {
+	return mk.name
+}
