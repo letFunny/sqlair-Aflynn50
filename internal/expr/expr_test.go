@@ -642,3 +642,13 @@ func (s *ExprSuite) TestCompleteDifferentType(c *C) {
 	_, err = preparedExpr.Complete(shadowedP)
 	c.Assert(err, ErrorMatches, `parameter issue: type expr_test.Person not found, have: expr_test.Person`)
 }
+
+func BenchmarkExpr(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		for _, t := range tests {
+			parser := expr.NewParser()
+			parsedExpr, _ := parser.Parse(t.input)
+			parsedExpr.Prepare(t.prepareArgs...)
+		}
+	}
+}
