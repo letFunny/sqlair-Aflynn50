@@ -4,11 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/canonical/sqlair"
 	"github.com/canonical/sqlair/internal/expr"
 	. "gopkg.in/check.v1"
 )
-
-type M map[string]any
 
 type wrongM map[int]any
 
@@ -318,12 +317,12 @@ func (s *ExprSuite) TestValidCompleteWithMap(c *C) {
 	}{{
 		"SELECT * AS &Address.* FROM t WHERE x = $M.fullname",
 		[]any{Address{}},
-		[]any{M{"fullname": "Jimany Johnson"}},
+		[]any{sqlair.M{"fullname": "Jimany Johnson"}},
 		[]any{sql.Named("sqlair_0", "Jimany Johnson")},
 	}, {
 		"SELECT foo FROM t WHERE x = $M.street, y = $Person.id",
 		[]any{Person{}},
-		[]any{Person{ID: 666}, M{"street": "Highway to Hell"}},
+		[]any{Person{ID: 666}, sqlair.M{"street": "Highway to Hell"}},
 		[]any{sql.Named("sqlair_0", "Highway to Hell"), sql.Named("sqlair_1", 666)},
 	},
 	}
@@ -359,13 +358,13 @@ func (s *ExprSuite) TestCompleteWithMapWrongKey(c *C) {
 	}{{
 		"SELECT * AS &Address.* FROM t WHERE x = $M.Fullname",
 		[]any{Address{}},
-		[]any{M{"fullname": "Jimany Johnson"}},
+		[]any{sqlair.M{"fullname": "Jimany Johnson"}},
 		[]any{sql.Named("sqlair_0", "Jimany Johnson")},
 		"parameter issue: key in M-type input does not match query key Fullname",
 	}, {
 		"SELECT foo FROM t WHERE x = $M.street, y = $Person.id",
 		[]any{Person{}},
-		[]any{Person{ID: 666}, M{"Street": "Highway to Hell"}},
+		[]any{Person{ID: 666}, sqlair.M{"Street": "Highway to Hell"}},
 		[]any{sql.Named("sqlair_0", "Highway to Hell"), sql.Named("sqlair_1", 666)},
 		"parameter issue: key in M-type input does not match query key street",
 	}}
@@ -400,7 +399,7 @@ func (s *ExprSuite) TestCompleteWithWrongMap(c *C) {
 		[]any{Person{}},
 		[]any{Person{ID: 666}, wrongM{5: "Highway to Hell"}},
 		[]any{sql.Named("sqlair_0", "Highway to Hell"), sql.Named("sqlair_1", 666)},
-		"parameter issue: map type of name wrongM found, expected M",
+		"parameter issue: map type is: wrongM, expected: M",
 	},
 	}
 	for _, test := range testList {

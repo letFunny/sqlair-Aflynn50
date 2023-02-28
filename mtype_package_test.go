@@ -11,8 +11,6 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-type M map[string]any
-
 func (s *PackageSuite) TestDecodeMtype(c *C) {
 	var tests = []struct {
 		summary  string
@@ -26,13 +24,13 @@ func (s *PackageSuite) TestDecodeMtype(c *C) {
 		query:    "SELECT p.id AS &Person.*, a.id AS &M.id FROM person AS p, address AS a",
 		types:    []any{Person{}},
 		inputs:   []any{},
-		outputs:  [][]any{{&Person{}, &M{}}},
-		expected: [][]any{{&Person{ID: 30}, &M{"id": int64(25)}}},
+		outputs:  [][]any{{&Person{}, &sqlair.M{}}},
+		expected: [][]any{{&Person{ID: 30}, &sqlair.M{"id": int64(25)}}},
 	}, {
 		summary:  "select multiple with extras",
 		query:    "SELECT name, * AS (&Person.*, &Address.id, &Manager.*), id FROM person WHERE id = $M.id",
 		types:    []any{Person{}, Address{}, Manager{}},
-		inputs:   []any{M{"id": 30}},
+		inputs:   []any{sqlair.M{"id": 30}},
 		outputs:  [][]any{{&Person{}, &Address{}, &Manager{}}},
 		expected: [][]any{{&Person{30, "Fred", "1000"}, &Address{ID: 30}, &Manager{30, "Fred", "1000"}}},
 	}, {
@@ -40,15 +38,15 @@ func (s *PackageSuite) TestDecodeMtype(c *C) {
 		query:    "SELECT (name, postcode) AS (&Address.street, &M.district) FROM person WHERE id = $Manager.id",
 		types:    []any{Address{}, Manager{}},
 		inputs:   []any{Manager{ID: 30}},
-		outputs:  [][]any{{&Address{}, &M{}}},
-		expected: [][]any{{&Address{Street: "Fred"}, &M{"district": "1000"}}},
+		outputs:  [][]any{{&Address{}, &sqlair.M{}}},
+		expected: [][]any{{&Address{Street: "Fred"}, &sqlair.M{"district": "1000"}}},
 	}, {
 		summary:  "select into star struct",
 		query:    "SELECT (name, postcode) AS &M.* FROM person WHERE postcode IN ($Manager.postcode, $Address.district)",
 		types:    []any{Person{}, Address{}, Manager{}},
 		inputs:   []any{Manager{PostalCode: "1000"}, Address{District: "2000"}},
-		outputs:  [][]any{{&M{}}},
-		expected: [][]any{{&M{"name": "Fred", "postcode": "1000"}}},
+		outputs:  [][]any{{&sqlair.M{}}},
+		expected: [][]any{{&sqlair.M{"name": "Fred", "postcode": "1000"}}},
 	},
 	}
 
@@ -106,19 +104,19 @@ func (s *PackageSuite) TestAllMtype(c *C) {
 		query:    "SELECT p.id AS &Person.*, a.id AS &M.* FROM person AS p, address AS a",
 		types:    []any{Person{}},
 		inputs:   []any{},
-		expected: [][]any{{Person{ID: int64(30)}, M{"id": int64(25)}}, {Person{ID: int64(30)}, M{"id": int64(30)}}, {Person{ID: int64(30)}, M{"id": int64(10)}}, {Person{ID: int64(20)}, M{"id": int64(25)}}},
+		expected: [][]any{{Person{ID: int64(30)}, sqlair.M{"id": int64(25)}}, {Person{ID: int64(30)}, sqlair.M{"id": int64(30)}}, {Person{ID: int64(30)}, sqlair.M{"id": int64(10)}}, {Person{ID: int64(20)}, sqlair.M{"id": int64(25)}}},
 	}, {
 		summary:  "simple select person",
 		query:    "SELECT (id, name) AS &M.* FROM person WHERE name = 'Fred'",
 		types:    []any{},
 		inputs:   []any{},
-		expected: [][]any{{M{"id": int64(30), "name": "Fred"}}},
+		expected: [][]any{{sqlair.M{"id": int64(30), "name": "Fred"}}},
 	}, {
 		summary:  "simple select people",
 		query:    "SELECT (id, name) AS &M.* FROM person WHERE postcode = '1000'",
 		types:    []any{},
 		inputs:   []any{},
-		expected: [][]any{{M{"id": int64(30), "name": "Fred"}}, {M{"id": int64(32), "name": "Sam"}}},
+		expected: [][]any{{sqlair.M{"id": int64(30), "name": "Fred"}}, {sqlair.M{"id": int64(32), "name": "Sam"}}},
 	},
 	}
 
@@ -171,12 +169,12 @@ func (s *PackageSuite) TestAllMtype(c *C) {
 // IsValidMapType takes a reflect type and checks whether it is a map, the type name is M, and the key type of the map is string.
 func IsValidMType(mt reflect.Type) bool {
 	var s string
-	return mt.Kind() == reflect.Map && mt.Name() == reflect.TypeOf(M{}).Name() && mt.Key() == reflect.TypeOf(s)
+	return mt.Kind() == reflect.Map && mt.Name() == reflect.TypeOf(sqlair.M{}).Name() && mt.Key() == reflect.TypeOf(s)
 }
 
 // CloneM copies the contents of an input expr.M type map into an sqlair_test.M type map, preparing it for DeepEqual asserting check.
-func CloneM(m expr.M) M {
-	tm := M{}
+func CloneM(m expr.M) sqlair.M {
+	tm := sqlair.M{}
 	for k, v := range m {
 		tm[k] = v
 	}

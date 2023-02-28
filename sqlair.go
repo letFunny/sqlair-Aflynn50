@@ -6,7 +6,7 @@ import (
 	"github.com/canonical/sqlair/internal/expr"
 )
 
-type M map[string]any
+type M = expr.M
 
 type Statement struct {
 	pe *expr.PreparedExpr
