@@ -409,3 +409,50 @@ AND    l.model_uuid = $JujuLeaseKey.model_uuid`,
 		c.Fatal(err)
 	}
 }
+
+func (s *PackageSuite) TestCommonErrors(c *C) {
+	var tests = []struct {
+		summery string
+		query   string
+		types   []any
+		inputs  []any
+		err     string
+	}{{
+		summery: "unqualified type",
+		query:   "SELECT &Person FROM person",
+		types:   []any{Person{}},
+		inputs:  []any{},
+		err:     "cannot parse expression: column 14: type not qualified",
+	}, {
+		summery: "",
+		query:   "SELECT &Person.nameFROM person",
+		types:   []any{Person{}},
+		inputs:  []any{},
+		err:     `cannot prepare expression: type Person has no "nameFROM" db tag`,
+	}}
+
+	drop, db, err := personAndAddressDB()
+	if err != nil {
+		c.Fatal(err)
+	}
+
+	sqlairDB := sqlair.NewDB(db)
+
+	for _, t := range tests {
+		stmt, err := sqlair.Prepare(t.query, t.types...)
+		if err != nil {
+			c.Assert(err.Error(), Equals, t.err)
+			continue
+		}
+		_, err = sqlairDB.Query(stmt, t.inputs...)
+		if err != nil {
+			c.Assert(err.Error(), Equals, t.err)
+			continue
+		}
+		c.Errorf("expected %s to throw an error, none was thrown", t.summery)
+	}
+	_, err = db.Exec(drop)
+	if err != nil {
+		c.Fatal(err)
+	}
+}
