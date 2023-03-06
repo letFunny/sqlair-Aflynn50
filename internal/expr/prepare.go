@@ -16,13 +16,13 @@ type PreparedExpr struct {
 	SQL     string
 }
 
-// loc stores the type and field in which you can find an IO part.
+// loc stores the type, and a struct field or map key, in which you can find an IO part.
 type loc struct {
 	typ   reflect.Type
-	field field
+	field fielder
 }
 
-type typeNameToInfo map[string]*info
+type typeNameToInfo map[string]infoType
 
 // getKeys returns the keys of a string map in a deterministic order.
 func getKeys[T any](m map[string]T) []string {
@@ -50,8 +50,7 @@ func printCols(cs []fullName) string {
 	return s.String()
 }
 
-// nParams returns "num" incrementing parameters with the first index being
-// "start".
+// nParams returns "num" incrementing parameters with the first index being "start".
 func nParams(start int, num int) string {
 	var s bytes.Buffer
 	s.WriteString("(")
@@ -108,28 +107,33 @@ type retBuilder struct {
 }
 
 // prepareExpr checks that an input or output part is correctly formatted, that
-// it corrosponds to known types and then generates the columns to go in the query.
+// it corresponds to known types and then generates the columns to go in the query.
 func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
-
-	var info *info
-	var ok bool
-
 	// res stores the list of columns to put in the query and their locations.
 	res := retBuilder{}
 
 	// add prepares a location and column.
 	add := func(typeName string, tag string, col fullName) error {
-		info, ok = ti[typeName]
+		info, ok := ti[typeName]
+
 		if !ok {
 			return fmt.Errorf(`type %s unknown, have: %s`, typeName, strings.Join(getKeys(ti), ", "))
 		}
 
-		f, ok := info.tagToField[tag]
-		if !ok {
-			return fmt.Errorf(`type %s has no %q db tag`, info.typ.Name(), tag)
+		switch in := info.(type) {
+		case *structInfo:
+			f, ok := in.tagToField[tag]
+			if !ok {
+				return fmt.Errorf(`type %s has no %q db tag`, in.typ.Name(), tag)
+			}
+			res.locs = append(res.locs, loc{in.typ, f})
+		case *mapInfo:
+			res.locs = append(res.locs, loc{in.typ, mapKey{name: tag}})
+		default:
+			return fmt.Errorf(`unrecognised info type, need struct of map info`)
 		}
+
 		res.cols = append(res.cols, col)
-		res.locs = append(res.locs, loc{info.typ, f})
 		return nil
 	}
 
@@ -143,7 +147,7 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 	// Case 0: A simple standalone input expression e.g. "$P.name".
 	if !p.isOut && len(p.cols) == 0 {
 		if len(p.types) != 1 {
-			return []fullName{fullName{}}, nil, fmt.Errorf("internal error: cannot group standalone input expressions")
+			return []fullName{{}}, nil, fmt.Errorf("internal error: cannot group standalone input expressions")
 		}
 		if err := add(p.types[0].prefix, p.types[0].name, fullName{}); err != nil {
 			return nil, nil, err
@@ -162,14 +166,22 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 		for _, t := range p.types {
 			if t.name == "*" {
 				// Generate columns for Star types.
-				info, ok = ti[t.prefix]
+				info, ok := ti[t.prefix]
 				if !ok {
 					return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, t.prefix, strings.Join(getKeys(ti), ", "))
 				}
-				for _, tag := range info.tags {
-					if err := add(t.prefix, tag, fullName{pref, tag}); err != nil {
-						return nil, nil, err
+
+				switch in := info.(type) {
+				case *mapInfo:
+					return nil, nil, fmt.Errorf(`map type with asterisk cannot be used when no column name is specified or column name is asterisk`)
+				case *structInfo:
+					for _, tag := range in.tags {
+						if err := add(t.prefix, tag, fullName{pref, tag}); err != nil {
+							return nil, nil, err
+						}
 					}
+				default:
+					return nil, nil, fmt.Errorf(`internal error: unknown info`)
 				}
 			} else {
 				// Generate Columns for none star types.
@@ -184,6 +196,15 @@ func prepareExpr(ti typeNameToInfo, p *ioPart) ([]fullName, []loc, error) {
 	// 		   "(col1, col2) VALUES ($P.*)".
 	// There must only be a single type in this case.
 	if p.types[0].name == "*" {
+		info, ok := ti[p.types[0].prefix]
+		if !ok {
+			return nil, nil, fmt.Errorf(`type %s unknown, have: %s`, p.types[0].prefix, strings.Join(getKeys(ti), ", "))
+		}
+
+		if info.Type().Kind() == reflect.Map && !p.isOut {
+			return nil, nil, fmt.Errorf(`map type with asterisk cannot be used as input`)
+		}
+
 		for _, c := range p.cols {
 			if err := add(p.types[0].prefix, c.name, c); err != nil {
 				return nil, nil, err
@@ -222,14 +243,12 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 		if err != nil {
 			return nil, err
 		}
-		ti[info.typ.Name()] = info
+		ti[info.Type().Name()] = info
 	}
 
 	var sql bytes.Buffer
-	// n counts the inputs.
-	var n int
-	// m counts the outputs.
-	var m int
+
+	var inputInd, outputInd int
 
 	var outputs = make([]loc, 0)
 	var inputs = make([]loc, 0)
@@ -246,22 +265,22 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 				for i, c := range cols {
 					sql.WriteString(c.String())
 					sql.WriteString(" AS _sqlair_")
-					sql.WriteString(strconv.Itoa(m))
+					sql.WriteString(strconv.Itoa(inputInd))
 					if i != len(cols)-1 {
 						sql.WriteString(", ")
 					}
-					m++
+					inputInd++
 				}
 				outputs = append(outputs, locs...)
 			} else {
 				if len(p.cols) == 0 {
-					sql.WriteString("@sqlair_" + strconv.Itoa(n))
+					sql.WriteString("@sqlair_" + strconv.Itoa(outputInd))
 				} else {
 					sql.WriteString(printCols(cols))
 					sql.WriteString(" VALUES ")
-					sql.WriteString(nParams(n, len(cols)))
+					sql.WriteString(nParams(outputInd, len(cols)))
 				}
-				n += len(cols)
+				outputInd += len(cols)
 				inputs = append(inputs, locs...)
 			}
 		case *bypassPart:

@@ -24,7 +24,8 @@ func (e *ExprInternalSuite) TestReflectStruct(c *C) {
 		NotInDB: "doesn't matter",
 	}
 
-	info, err := typeInfo(s)
+	in, err := typeInfo(s)
+	info := in.(*structInfo)
 	c.Assert(err, IsNil)
 
 	c.Assert(reflect.Struct, Equals, info.typ.Kind())
@@ -73,20 +74,25 @@ func (s *ExprInternalSuite) TestReflectSimpleConcurrent(c *C) {
 	wg.Wait()
 }
 
-func (s *ExprInternalSuite) TestReflectNonStructType(c *C) {
+func (s *ExprInternalSuite) TestReflectInvalidType(c *C) {
 	type mymap map[int]int
 	var nonStructs = []any{
 		mymap{},
 		int(0),
 		string(""),
-		map[string]string{},
 	}
 
-	for _, value := range nonStructs {
-		i, err := typeInfo(value)
-		c.Assert(err, ErrorMatches, "internal error: attempted to obtain struct information for something that is not a struct: .*")
-		c.Assert(i, IsNil)
-	}
+	i, err := typeInfo(nonStructs[0])
+	c.Assert(err, ErrorMatches, "map type mymap must have key type string; found type int")
+	c.Assert(i, IsNil)
+
+	i, err = typeInfo(nonStructs[1])
+	c.Assert(err, ErrorMatches, "internal error: attempted to obtain type information for something that is neither a struct nor a map: int")
+	c.Assert(i, IsNil)
+
+	i, err = typeInfo(nonStructs[2])
+	c.Assert(err, ErrorMatches, "internal error: attempted to obtain type information for something that is neither a struct nor a map: string")
+	c.Assert(i, IsNil)
 }
 
 func (s *ExprInternalSuite) TestReflectBadTagError(c *C) {
@@ -169,5 +175,26 @@ func (s *ExprInternalSuite) TestReflectValidTag(c *C) {
 	for _, value := range validTags {
 		_, err := typeInfo(value)
 		c.Assert(err, IsNil)
+	}
+}
+
+func (s *ExprInternalSuite) TestUnexportedField(c *C) {
+	var unexportedFields = []any{
+		struct {
+			ID    int64 `db:"id"`
+			unexp int64 `db:"unexp"`
+		}{99, 100},
+		struct {
+			unexp int64 `db:"unexp"`
+			ID    int64 `db:"id"`
+		}{99, 100},
+		struct {
+			unexp int64 `db:"unexp"`
+		}{100},
+	}
+
+	for _, value := range unexportedFields {
+		_, err := typeInfo(value)
+		c.Assert(err, ErrorMatches, `field "unexp" of struct  not exported`)
 	}
 }

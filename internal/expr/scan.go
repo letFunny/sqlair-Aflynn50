@@ -21,7 +21,7 @@ func (re *ResultExpr) One(args ...any) error {
 	return nil
 }
 
-// getTypes returns the types in the order they appear in the query
+// getTypes returns the types in the order they appear in the query.
 func getTypes(ods []loc) []reflect.Type {
 	isDup := make(map[reflect.Type]bool)
 	ts := []reflect.Type{}
@@ -43,22 +43,26 @@ func (re *ResultExpr) All() ([][]any, error) {
 	ts := getTypes(re.outputs)
 
 	for {
-		ok, err := re.Next()
-		if err != nil {
+		if ok, err := re.Next(); err != nil {
 			return [][]any{}, err
 		} else if !ok {
 			break
 		}
 
 		rs := []any{}
+		var r reflect.Value
 		for _, t := range ts {
-			rp := reflect.New(t)
-			// We need to unwrap the struct inside the interface{}.
-			r := rp.Elem()
+			r = reflect.New(t).Elem()
+
+			if t.Kind() == reflect.Map {
+				r.Set(reflect.MakeMap(t))
+			}
+
 			err := re.decodeValue(r)
 			if err != nil {
 				return [][]any{}, err
 			}
+
 			rs = append(rs, r.Interface())
 		}
 
@@ -71,6 +75,9 @@ func (re *ResultExpr) All() ([][]any, error) {
 
 func (re *ResultExpr) Next() (bool, error) {
 	if !re.rows.Next() {
+		if re.rows.Err() != nil {
+			return false, re.rows.Err()
+		}
 		return false, nil
 	}
 
@@ -117,59 +124,80 @@ func (re *ResultExpr) Decode(args ...any) (err error) {
 
 		v := reflect.ValueOf(arg)
 		if v.Kind() != reflect.Pointer {
-			return fmt.Errorf("none pointer paramter")
+			return fmt.Errorf("none pointer parameter")
 		}
 		v = reflect.Indirect(v)
 
-		re.decodeValue(v)
-
+		if err := re.decodeValue(v); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-// decodeValue sets the fields in the reflected struct "v" which have tags
-// corrosponding to columns in current row of the query results.
+// decodeValue sets the fields in the reflected struct which have tags
+// corresponding to columns in the current row of the query results.
 func (re *ResultExpr) decodeValue(v reflect.Value) error {
 	typeFound := false
+
 	for i, outDest := range re.outputs {
 		if outDest.typ == v.Type() {
 			typeFound = true
 			err := setValue(v, outDest.field, re.rs[i])
 			if err != nil {
-				return fmt.Errorf("struct %s: %s", v.Type().Name(), err)
+				return fmt.Errorf("type %s: %s", v.Type().Name(), err)
 			}
-
 		}
 	}
+
 	if !typeFound {
 		return fmt.Errorf("no output expression of type %s", v.Type().Name())
 	}
 	return nil
 }
 
-func setValue(dest reflect.Value, fInfo field, val any) error {
+func setValue(dest reflect.Value, fInfo fielder, val any) error {
 	var isZero bool
 
 	v := reflect.ValueOf(val)
+	name := fInfo.Name()
 
-	if val == nil {
-		if fInfo.omitEmpty {
-			return nil
+	switch f := fInfo.(type) {
+	case field:
+		if dest.Type().Kind() != reflect.Struct {
+			return fmt.Errorf("internal error: field of type %#v but type %#v is not a struct", f, dest.Type())
 		}
-		isZero = true
-		v = reflect.Zero(fInfo.typ)
-	}
 
-	if !isZero && v.Type() != fInfo.typ {
-		return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), fInfo.name, fInfo.typ.Name())
+		if val == nil {
+			if f.omitEmpty {
+				return nil
+			}
+			isZero = true
+			v = reflect.Zero(f.typ)
+		}
+		if !isZero && v.Type() != f.typ {
+			return fmt.Errorf("result of type %#v but field %#v is type %#v", v.Type().Name(), name, f.typ.Name())
+		}
+		itsField := dest.FieldByIndex(f.index)
+		if !itsField.CanSet() {
+			return fmt.Errorf("cannot set field %#v. CanAddr=%v", name, itsField.CanAddr())
+		}
+		itsField.Set(v)
+		return nil
+	case mapKey:
+		if dest.Type().Kind() != reflect.Map {
+			return fmt.Errorf("internal error: key of type %#v but type %#v is not a map", f, dest.Type())
+		}
+		k := reflect.ValueOf(f.name)
+		if !dest.CanSet() {
+			return fmt.Errorf("cannot set map %v", dest.Type())
+		}
+		dest.SetMapIndex(k, v)
+		return nil
+	default:
+		return fmt.Errorf("unsupported field for type %#v when setting its value", dest.Type())
 	}
-	f := dest.FieldByIndex(fInfo.index)
-	if !f.CanSet() {
-		return fmt.Errorf("cannot set field %#v. CanAddr=%v", fInfo.name, f.CanAddr())
-	}
-	f.Set(v)
-	return nil
 }
 
 func (re *ResultExpr) Close() error {
