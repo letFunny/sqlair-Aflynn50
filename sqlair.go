@@ -91,21 +91,38 @@ func (db *DB) Query(ctx context.Context, s *Statement, inputArgs ...any) *Query 
 }
 
 // Run will execute the query.
-// Any rows returned by the query are ignored.
+// The first row (if it exists) can be decoded into the outputArgs.
 // An Outcome struct can be passed which will be populated with the results of the query.
 // Only the first arguement will be populated.
-func (q *Query) Run(outcomes ...*Outcome) error {
+func (q *Query) Run(outputArgs ...any) error {
 	if q.err != nil {
 		return q.err
 	}
-	res, err := q.qs.ExecContext(q.ctx, q.qe.QuerySQL(), q.qe.QueryArgs()...)
-	if err != nil {
+	if q.qe.HasOutputs() {
+		err := ErrNoRows
+		iter := q.Iter()
+		if iter.Next() {
+			iter.Decode(outputArgs...)
+			err = nil
+		}
+		if cerr := iter.Close(); cerr != nil {
+			return cerr
+		}
 		return err
+	} else {
+		res, err := q.qs.ExecContext(q.ctx, q.qe.QuerySQL(), q.qe.QueryArgs()...)
+		if err != nil {
+			return err
+		}
+		if len(outputArgs) > 0 {
+			if oc, ok := outputArgs[0].(*Outcome); len(outputArgs) == 1 && ok {
+				oc.result = res
+			} else {
+				return fmt.Errorf("cannot decode results: query does not return any results")
+			}
+		}
+		return nil
 	}
-	if len(outcomes) > 0 {
-		outcomes[0].result = res
-	}
-	return nil
 }
 
 // Iter returns an Iterator to iterate through the results row by row.
@@ -186,20 +203,6 @@ type Outcome struct {
 
 func (o *Outcome) Result() sql.Result {
 	return o.result
-}
-
-// One runs a query and decodes the first row into outputArgs.
-func (q *Query) One(outputArgs ...any) error {
-	err := ErrNoRows
-	iter := q.Iter()
-	if iter.Next() {
-		iter.Decode(outputArgs...)
-		err = nil
-	}
-	if cerr := iter.Close(); cerr != nil {
-		return cerr
-	}
-	return err
 }
 
 // All iterates over the query and decodes all rows into the provided slices.

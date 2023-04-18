@@ -346,7 +346,7 @@ func (s *PackageSuite) TestValidOne(c *C) {
 		}
 
 		q := db.Query(nil, stmt, t.inputs...)
-		err = q.One(t.outputs...)
+		err = q.Run(t.outputs...)
 		if err != nil {
 			c.Errorf("\ntest %q failed (One):\ninput: %s\nerr: %s\n", t.summary, t.query, err)
 			continue
@@ -394,7 +394,7 @@ func (s *PackageSuite) TestOneErrors(c *C) {
 			continue
 		}
 
-		err = db.Query(nil, stmt, t.inputs...).One(t.outputs...)
+		err = db.Query(nil, stmt, t.inputs...).Run(t.outputs...)
 		c.Assert(err, ErrorMatches, t.err,
 			Commentf("\ntest %q failed:\ninput: %s\noutputs: %s", t.summary, t.query, t.outputs))
 	}
@@ -413,7 +413,7 @@ func (s *PackageSuite) TestErrNoRows(c *C) {
 
 	db := sqlair.NewDB(sqldb)
 	stmt := sqlair.MustPrepare("SELECT * AS &Person.* FROM person WHERE id=12312", Person{})
-	err = db.Query(nil, stmt).One(&Person{})
+	err = db.Query(nil, stmt).Run(&Person{})
 	if !errors.Is(err, sqlair.ErrNoRows) {
 		c.Errorf("test failed, error %q not the same as %q", err, sqlair.ErrNoRows)
 	}
@@ -599,7 +599,7 @@ func (s *PackageSuite) TestRun(c *C) {
 
 	selectStmt := sqlair.MustPrepare("SELECT &Person.* FROM person WHERE id = $Person.id", Person{})
 	var jimCheck = Person{}
-	err = db.Query(nil, selectStmt, &jim).One(&jimCheck)
+	err = db.Query(nil, selectStmt, &jim).Run(&jimCheck)
 	c.Assert(err, IsNil)
 	c.Assert(jimCheck, Equals, jim)
 
@@ -656,7 +656,7 @@ func (s *PackageSuite) TestQueryMultipleRuns(c *C) {
 
 	// Run different Query methods.
 	q := db.Query(nil, stmt)
-	err = q.One(oneOutput)
+	err = q.Run(oneOutput)
 	c.Assert(err, IsNil)
 	c.Assert(oneExpected, DeepEquals, oneOutput)
 
@@ -664,7 +664,7 @@ func (s *PackageSuite) TestQueryMultipleRuns(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(allOutput, DeepEquals, allExpected)
 
-	err = q.Run()
+	err = q.Run(&Person{})
 	c.Assert(err, IsNil)
 
 	iter := q.Iter()
@@ -707,12 +707,9 @@ func (s *PackageSuite) TestQueryMultipleRuns(c *C) {
 	c.Assert(iterOutputs, DeepEquals, iterExpected)
 
 	q = db.Query(nil, stmt)
-	err = q.One(oneOutput)
+	err = q.Run(oneOutput)
 	c.Assert(err, IsNil)
 	c.Assert(oneExpected, DeepEquals, oneOutput)
-
-	err = q.Run()
-	c.Assert(err, IsNil)
 
 	err = db.Query(nil, sqlair.MustPrepare(dropTables)).Run()
 	c.Assert(err, IsNil)
