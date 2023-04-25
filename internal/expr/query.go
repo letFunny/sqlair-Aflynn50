@@ -74,7 +74,7 @@ func (pe *PreparedExpr) Query(args ...any) (ce *QueryExpr, err error) {
 		}
 	}
 
-	// Query parameteres.
+	// Query parameters.
 	qargs := []any{}
 
 	for i, in := range pe.inputs {
