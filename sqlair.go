@@ -83,13 +83,14 @@ type Iterator struct {
 
 // Query takes a context, prepared SQLair Statement and the structs mentioned in the query arguments.
 // It returns a Query object for iterating over the results.
-func (db *DB) Query(ctx context.Context, s *Statement, inputArgs ...any) *Query {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
+func (db *DB) Query(s *Statement, inputArgs ...any) *Query {
 	qe, err := s.pe.Query(inputArgs...)
+	ctx := context.Background()
 	return &Query{qs: db.db, qe: qe, ctx: ctx, err: err}
+}
+
+func (q *Query) WithContext(ctx context.Context) {
+	q.ctx = ctx
 }
 
 // Run is an alias for Get that takes no arguments.
@@ -352,11 +353,8 @@ func (txopts *TXOptions) plainTXOptions() *sql.TxOptions {
 
 // Query takes a context, prepared SQLair Statement and the structs mentioned in the query arguments.
 // It returns a Query object for iterating over the results.
-func (tx *TX) Query(ctx context.Context, s *Statement, inputArgs ...any) *Query {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
+func (tx *TX) Query(s *Statement, inputArgs ...any) *Query {
 	qe, err := s.pe.Query(inputArgs...)
+	ctx := context.Background()
 	return &Query{qs: tx.tx, qe: qe, ctx: ctx, err: err}
 }
