@@ -175,6 +175,10 @@ func generateTypeInfo(t reflect.Type) (typeInfo, error) {
 		}
 		for _, field := range fields {
 			tags = append(tags, field.tag)
+			if dup, ok := info.tagToField[field.tag]; ok {
+				return nil, fmt.Errorf("tag %q appears in field %q and field %q in type %q",
+					field.tag, field.name, dup.name, t.Name())
+			}
 			info.tagToField[field.tag] = field
 		}
 

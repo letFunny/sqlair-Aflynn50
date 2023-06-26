@@ -45,6 +45,21 @@ type IntMap map[string]int
 
 type StringMap map[string]string
 
+type E1 struct {
+	Street string `db:"street"`
+}
+type E2 struct {
+	ID int `db:"id"`
+}
+type E3 struct {
+	District string `db:"district"`
+	E2       E2
+}
+type EmbeddedStruct struct {
+	E1 E1
+	E3 *E3
+}
+
 var tests = []struct {
 	summary          string
 	query            string
@@ -309,6 +324,12 @@ AND z = @sqlair_0 -- The line with $Person.id on it
 	"[Bypass[INSERT INTO arr VALUES (ARRAY[[1,2],[] Input[HardMaths.x] Bypass[,4]], ARRAY[[5,6],[] Input[HardMaths.y] Bypass[,8]]);]]",
 	[]any{HardMaths{}},
 	"INSERT INTO arr VALUES (ARRAY[[1,2],[@sqlair_0,4]], ARRAY[[5,6],[@sqlair_1,8]]);",
+}, {
+	"embedded struct",
+	"SELECT &EmbeddedStruct.* FROM address WHERE id = 1000",
+	"[Bypass[SELECT ] Output[[] [EmbeddedStruct.*]] Bypass[ FROM address WHERE id = 1000]]",
+	[]any{EmbeddedStruct{}},
+	"SELECT district AS _sqlair_0, id AS _sqlair_1, street AS _sqlair_2 FROM address WHERE id = 1000",
 }}
 
 func (s *ExprSuite) TestExpr(c *C) {
@@ -401,6 +422,20 @@ func FuzzParser(f *testing.F) {
 }
 
 func (s *ExprSuite) TestPrepareErrors(c *C) {
+	type DupTags struct {
+		ID1 int `db:"id"`
+		ID2 int `db:"id"`
+	}
+	type IDS1 struct {
+		ID1 int `db:"id"`
+	}
+	type IDS2 struct {
+		ID2 int `db:"id"`
+	}
+	type DupNestedTags struct {
+		IDS1
+		IDS2
+	}
 	tests := []struct {
 		query       string
 		prepareArgs []any
@@ -493,6 +528,14 @@ func (s *ExprSuite) TestPrepareErrors(c *C) {
 		query:       "SELECT * AS &.* FROM t",
 		prepareArgs: []any{struct{ f int }{f: 1}},
 		err:         `cannot prepare expression: cannot use anonymous struct`,
+	}, {
+		query:       "SELECT &DupTags.* FROM t",
+		prepareArgs: []any{DupTags{}},
+		err:         `cannot prepare expression: tag "id" appears in field "ID2" and field "ID1" in type "DupTags"`,
+	}, {
+		query:       "SELECT &DupNestedTags.* FROM t",
+		prepareArgs: []any{DupNestedTags{}},
+		err:         `cannot prepare expression: tag "id" appears in field "ID2" and field "ID1" in type "DupNestedTags"`,
 	}}
 
 	for i, test := range tests {
