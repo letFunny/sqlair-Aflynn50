@@ -376,6 +376,21 @@ func (s *PackageSuite) TestIterGetErrors(c *C) {
 }
 
 func (s *PackageSuite) TestValidGet(c *C) {
+	type E1 struct {
+		Street string `db:"street"`
+	}
+	type E2 struct {
+		ID int `db:"id"`
+	}
+	type E3 struct {
+		District string `db:"district"`
+		E2       E2
+	}
+	type EmbeddedStruct struct {
+		E1 E1
+		E3 *E3
+	}
+
 	var tests = []struct {
 		summary  string
 		query    string
@@ -397,6 +412,13 @@ func (s *PackageSuite) TestValidGet(c *C) {
 		inputs:   []any{Address{ID: 1000}, Person{ID: 30}},
 		outputs:  []any{&Person{}, &Address{}, &Manager{}},
 		expected: []any{&Person{30, "Fred", 1000}, &Address{1000, "Happy Land", "Main Street"}, &Manager{30, "Fred", 1000}},
+	}, {
+		summary:  "embedded struct",
+		query:    "SELECT &EmbeddedStruct.* FROM address WHERE id = 1000",
+		types:    []any{EmbeddedStruct{}},
+		inputs:   []any{},
+		outputs:  []any{&EmbeddedStruct{E3: &E3{}}},
+		expected: []any{&EmbeddedStruct{E1: E1{Street: "Main Street"}, E3: &E3{District: "Happy Land", E2: E2{ID: 1000}}}},
 	}}
 
 	dropTables, sqldb, err := personAndAddressDB()

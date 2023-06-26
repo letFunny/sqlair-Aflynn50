@@ -35,7 +35,7 @@ type structField struct {
 	structType reflect.Type
 
 	// Index for Type.Field.
-	index int
+	index []int
 
 	// The tag assosiated with this field
 	tag string
@@ -109,9 +109,55 @@ func getTypeInfo(value any) (typeInfo, error) {
 	return typeInfo, nil
 }
 
+// getStructFields requires the caller to check that t is a struct.
+func getStructFields(t reflect.Type) ([]*structField, error) {
+	var fields []*structField
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if !f.IsExported() {
+			return nil, fmt.Errorf("field %q of struct %s not exported", f.Name, t.Name())
+		}
+		switch f.Type.Kind() {
+		case reflect.Struct, reflect.Pointer:
+			nt := f.Type
+			if nt.Kind() == reflect.Pointer && nt.Elem().Kind() == reflect.Struct {
+				nt = nt.Elem()
+			}
+			nestedFields, err := getStructFields(nt)
+			if err != nil {
+				return nil, err
+			}
+			for _, nestedField := range nestedFields {
+				nestedField.index = append([]int{i}, nestedField.index...)
+				nestedField.structType = t
+			}
+			fields = append(fields, nestedFields...)
+		default:
+			// Fields without a "db" tag are outside of SQLair's remit.
+			tag := f.Tag.Get("db")
+			if tag == "" {
+				continue
+			}
+			tag, omitEmpty, err := parseTag(tag)
+			if err != nil {
+				return nil, fmt.Errorf("cannot parse tag for field %s.%s: %s", t.Name(), f.Name, err)
+			}
+			fields = append(fields, &structField{
+				name:       f.Name,
+				index:      f.Index,
+				omitEmpty:  omitEmpty,
+				tag:        tag,
+				structType: t,
+			})
+		}
+	}
+	return fields, nil
+}
+
 // generate produces and returns reflection information for the input
 // reflect.Value that is specifically required for SQLair operation.
 func generateTypeInfo(t reflect.Type) (typeInfo, error) {
+	var tags []string
 	switch t.Kind() {
 	case reflect.Map:
 		if t.Key().Kind() != reflect.String {
@@ -123,31 +169,13 @@ func generateTypeInfo(t reflect.Type) (typeInfo, error) {
 			tagToField: make(map[string]*structField),
 			structType: t,
 		}
-		tags := []string{}
-
-		for i := 0; i < t.NumField(); i++ {
-			f := t.Field(i)
-			// Fields without a "db" tag are outside of SQLAir's remit.
-			tag := f.Tag.Get("db")
-			if tag == "" {
-				continue
-			}
-			if !f.IsExported() {
-				return nil, fmt.Errorf("field %q of struct %s not exported", f.Name, t.Name())
-			}
-
-			tag, omitEmpty, err := parseTag(tag)
-			if err != nil {
-				return nil, fmt.Errorf("cannot parse tag for field %s.%s: %s", t.Name(), f.Name, err)
-			}
-			tags = append(tags, tag)
-			info.tagToField[tag] = &structField{
-				name:       f.Name,
-				index:      i,
-				omitEmpty:  omitEmpty,
-				tag:        tag,
-				structType: t,
-			}
+		fields, err := getStructFields(t)
+		if err != nil {
+			return nil, err
+		}
+		for _, field := range fields {
+			tags = append(tags, field.tag)
+			info.tagToField[field.tag] = field
 		}
 
 		sort.Strings(tags)
