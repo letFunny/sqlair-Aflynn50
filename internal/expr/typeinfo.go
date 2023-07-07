@@ -1,6 +1,7 @@
 package expr
 
 import (
+	"database/sql"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"sync"
 )
+
+var scannerInterface = reflect.TypeOf((*sql.Scanner)(nil)).Elem()
 
 type typeMember interface {
 	outerType() reflect.Type
@@ -117,13 +120,15 @@ func getStructFields(t reflect.Type) ([]*structField, error) {
 		if !f.IsExported() {
 			return nil, fmt.Errorf("field %q of struct %s not exported", f.Name, t.Name())
 		}
-		switch f.Type.Kind() {
-		case reflect.Struct, reflect.Pointer:
-			nt := f.Type
-			if nt.Kind() == reflect.Pointer && nt.Elem().Kind() == reflect.Struct {
-				nt = nt.Elem()
+		ft := f.Type
+		k := ft.Kind()
+		// Check if it is an embedded struct. If the pointer to the field type
+		// implementes Scanner then it is not a nested struct.
+		if (k == reflect.Struct || k == reflect.Pointer) && !reflect.PointerTo(ft).Implements(scannerInterface) {
+			if k == reflect.Pointer && ft.Elem().Kind() == reflect.Struct {
+				ft = ft.Elem()
 			}
-			nestedFields, err := getStructFields(nt)
+			nestedFields, err := getStructFields(ft)
 			if err != nil {
 				return nil, err
 			}
@@ -132,7 +137,7 @@ func getStructFields(t reflect.Type) ([]*structField, error) {
 				nestedField.structType = t
 			}
 			fields = append(fields, nestedFields...)
-		default:
+		} else {
 			// Fields without a "db" tag are outside of SQLair's remit.
 			tag := f.Tag.Get("db")
 			if tag == "" {
