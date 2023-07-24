@@ -325,11 +325,23 @@ AND z = @sqlair_0 -- The line with $Person.id on it
 	[]any{HardMaths{}},
 	"INSERT INTO arr VALUES (ARRAY[[1,2],[@sqlair_0,4]], ARRAY[[5,6],[@sqlair_1,8]]);",
 }, {
-	"embedded struct",
+	"embedded struct asterisk output",
 	"SELECT &EmbeddedStruct.* FROM address WHERE id = 1000",
 	"[Bypass[SELECT ] Output[[] [EmbeddedStruct.*]] Bypass[ FROM address WHERE id = 1000]]",
 	[]any{EmbeddedStruct{}},
 	"SELECT district AS _sqlair_0, id AS _sqlair_1, street AS _sqlair_2 FROM address WHERE id = 1000",
+}, {
+	"embedded struct columns output",
+	"SELECT &EmbeddedStruct.district, &EmbeddedStruct.id FROM address WHERE id = 1000",
+	"[Bypass[SELECT ] Output[[] [EmbeddedStruct.district]] Bypass[, ] Output[[] [EmbeddedStruct.id]] Bypass[ FROM address WHERE id = 1000]]",
+	[]any{EmbeddedStruct{}},
+	"SELECT district AS _sqlair_0, id AS _sqlair_1 FROM address WHERE id = 1000",
+}, {
+	"embedded struct input",
+	"SELECT &Address.* FROM address WHERE id = $EmbeddedStruct.id AND district = $EmbeddedStruct.district AND street = $EmbeddedStruct.street",
+	"[Bypass[SELECT ] Output[[] [Address.*]] Bypass[ FROM address WHERE id = ] Input[EmbeddedStruct.id] Bypass[ AND district = ] Input[EmbeddedStruct.district] Bypass[ AND street = ] Input[EmbeddedStruct.street]]",
+	[]any{Address{}, EmbeddedStruct{}},
+	"SELECT district AS _sqlair_0, id AS _sqlair_1, street AS _sqlair_2 FROM address WHERE id = @sqlair_0 AND district = @sqlair_1 AND street = @sqlair_2",
 }}
 
 func (s *ExprSuite) TestExpr(c *C) {

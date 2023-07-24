@@ -534,9 +534,9 @@ func (s *PackageSuite) TestValidGet(c *C) {
 		expected: []any{&Person{30, "Fred", 1000}, &Address{1000, "Happy Land", "Main Street"}, &Manager{30, "Fred", 1000}},
 	}, {
 		summary:  "embedded struct",
-		query:    "SELECT &EmbeddedStruct.* FROM address WHERE id = 1000",
+		query:    "SELECT &EmbeddedStruct.* FROM address WHERE id = $EmbeddedStruct.id AND district = $EmbeddedStruct.district AND street = $EmbeddedStruct.street",
 		types:    []any{EmbeddedStruct{}},
-		inputs:   []any{},
+		inputs:   []any{&EmbeddedStruct{E1: E1{Street: "Main Street"}, E3: &E3{District: "Happy Land", E2: E2{ID: 1000}}}},
 		outputs:  []any{&EmbeddedStruct{E3: &E3{}}},
 		expected: []any{&EmbeddedStruct{E1: E1{Street: "Main Street"}, E3: &E3{District: "Happy Land", E2: E2{ID: 1000}}}},
 	}, {
