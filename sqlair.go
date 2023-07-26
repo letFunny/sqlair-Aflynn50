@@ -107,8 +107,10 @@ func (q *Query) Run() error {
 	return q.Get()
 }
 
-// Get runs the query and decodes the first result into the provided output arguments.
-// It returns ErrNoRows if output arguments were provided but no results were found.
+// Get runs the query and decodes the first result into the provided output
+// arguments.
+// It returns ErrNoRows if output arguments were provided but no results were
+// found.
 // An Outcome struct may be provided as the first output variable to get
 // information about query execution.
 func (q *Query) Get(outputArgs ...any) error {
@@ -177,7 +179,8 @@ func (iter *Iterator) Next() bool {
 	return iter.rows.Next()
 }
 
-// Get decodes the result from the previous Next call into the provided output arguments.
+// Get decodes the result from the previous Next call into the provided output
+// arguments.
 // Before the first call of Next an Outcome struct may be passed to Get as the
 // only argument to get information about query execution.
 func (iter *Iterator) Get(outputArgs ...any) (err error) {
