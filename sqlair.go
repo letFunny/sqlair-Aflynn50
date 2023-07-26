@@ -9,29 +9,23 @@ import (
 	"github.com/canonical/sqlair/internal/expr"
 )
 
-// M is a type that, as with other map types, can be used with SQLair for more dynamic behavior.
-// It can be used in querys to pass arbitrary values referenced by their key.
-//
-// For example:
-//
-//	stmt := sqlair.MustPrepare("SELECT (name, postcode) AS &M.* FROM p WHERE id = $M.id", sqlair.M{})
-//	q := db.Query(ctx, stmt, sqlair.M{"id": 10})
-//	var resultMap = sqlair.M{}
-//	err := q.Get(resultMap) // => sqlair.M{"name": "Fred", "postcode": 10031}
+// M is a type that, as with other map types, can be used in SQLair input and
+// output expressions. It can be used in queries to pass arbitrary values
+// referenced by their key.
 type M map[string]any
 
 var ErrNoRows = sql.ErrNoRows
 
-// Statement represents a SQL statement with valid SQLair expressions.
-// It is ready to be run on a SQLair DB.
+// Statement represents a verified SQLair statement ready to be run on a DB.
+// A statement can be used with any DB.
 type Statement struct {
 	pe *expr.PreparedExpr
 }
 
-// Prepare expands the types mentioned in the SQLair expressions and checks
-// the SQLair parts of the query are well formed.
+// Prepare validates SQLair expressions in the query and generates a SQLair
+// statement Statement.
 // typeSamples must contain an instance of every type mentioned in the
-// SQLair expressions of the query. These are used only for type information.
+// SQLair expressions in the query. These are used only for type information.
 func Prepare(query string, typeSamples ...any) (*Statement, error) {
 	parser := expr.NewParser()
 	parsedExpr, err := parser.Parse(query)
@@ -45,7 +39,7 @@ func Prepare(query string, typeSamples ...any) (*Statement, error) {
 	return &Statement{pe: preparedExpr}, nil
 }
 
-// MustPrepare is the same as prepare except that it panics on error.
+// MustPrepare is the same as Prepare except that it panics on error.
 func MustPrepare(query string, typeSamples ...any) *Statement {
 	s, err := Prepare(query, typeSamples...)
 	if err != nil {
@@ -74,7 +68,7 @@ type querySubstrate interface {
 	ExecContext(ctx context.Context, sql string, args ...any) (sql.Result, error)
 }
 
-// Query holds the results of a database query.
+// Query represents a query on a database. It is designed to be run once.
 type Query struct {
 	qe  *expr.QueryExpr
 	qs  querySubstrate
@@ -82,7 +76,10 @@ type Query struct {
 	err error
 }
 
-// Iterator is used to iterate over the results of the query.
+// Iterator is used to iterate over the results of the query row by row.
+// Next is used to advance to the next row and must be run before the first
+// Get unless getting the Outcome.
+// Close must be run once iteration is done.
 type Iterator struct {
 	qe      *expr.QueryExpr
 	rows    *sql.Rows
@@ -92,8 +89,9 @@ type Iterator struct {
 	started bool
 }
 
-// Query takes a context, prepared SQLair Statement and the structs mentioned in the query arguments.
-// It returns a Query object for iterating over the results.
+// Query takes a context, prepared SQLair Statement and the structs mentioned
+// in the query arguments. The query is run on the database when one of Iter,
+// Run, Get or GetAll is executed on the Query.
 func (db *DB) Query(ctx context.Context, s *Statement, inputArgs ...any) *Query {
 	if ctx == nil {
 		ctx = context.Background()
@@ -104,13 +102,15 @@ func (db *DB) Query(ctx context.Context, s *Statement, inputArgs ...any) *Query 
 }
 
 // Run is an alias for Get that takes no arguments.
+// Run is used to run a query on a database and disregard any results.
 func (q *Query) Run() error {
 	return q.Get()
 }
 
 // Get runs the query and decodes the first result into the provided output arguments.
 // It returns ErrNoRows if output arguments were provided but no results were found.
-// An &Outcome{} variable may be provided as the first output variable.
+// An Outcome struct may be provided as the first output variable to get
+// information about query execution.
 func (q *Query) Get(outputArgs ...any) error {
 	if q.err != nil {
 		return q.err
@@ -158,7 +158,7 @@ func (q *Query) Iter() *Iterator {
 	var cols []string
 	if q.qe.HasOutputs() {
 		rows, err = q.qs.QueryContext(q.ctx, q.qe.QuerySQL(), q.qe.QueryArgs()...)
-		if err == nil { // if err IS nil
+		if err == nil {
 			cols, err = rows.Columns()
 		}
 	} else {
@@ -168,7 +168,7 @@ func (q *Query) Iter() *Iterator {
 }
 
 // Next prepares the next row for Get.
-// If an error occurs during iteration it will be returned with Iter.Close().
+// If an error occurs during iteration it will be returned with Iter.Close.
 func (iter *Iterator) Next() bool {
 	iter.started = true
 	if iter.err != nil || iter.rows == nil {
@@ -178,7 +178,8 @@ func (iter *Iterator) Next() bool {
 }
 
 // Get decodes the result from the previous Next call into the provided output arguments.
-// An &Outcome{} variable may be provided as the single output variable before the first call to Next.
+// Before the first call of Next an Outcome struct may be passed to Get as the
+// only argument to get information about query execution.
 func (iter *Iterator) Get(outputArgs ...any) (err error) {
 	if iter.err != nil {
 		return iter.err
@@ -227,18 +228,22 @@ func (iter *Iterator) Close() error {
 }
 
 // Outcome holds metadata about executed queries, and can be provided as the
-// first output argument to any of the Get methods.
+// first output argument to any of the Get methods to populate it with
+// information about the query execution.
 type Outcome struct {
 	result sql.Result
 }
 
+// Result returns a sql.Result containing information about the query
+// execution.
 func (o *Outcome) Result() sql.Result {
 	return o.result
 }
 
 // GetAll iterates over the query and scans all rows into the provided slices.
 // sliceArgs must contain pointers to slices of each of the output types.
-// An &Outcome{} variable may be provided as the first output variable.
+// An Outcome struct may be provided as the first output variable to get
+// information about query execution.
 func (q *Query) GetAll(sliceArgs ...any) (err error) {
 	if q.err != nil {
 		return q.err
@@ -255,7 +260,7 @@ func (q *Query) GetAll(sliceArgs ...any) (err error) {
 			sliceArgs = sliceArgs[1:]
 		}
 	}
-	// Check slice inputs
+	// Check slice are as expected using reflection.
 	var slicePtrVals = []reflect.Value{}
 	var sliceVals = []reflect.Value{}
 	for _, ptr := range sliceArgs {
@@ -274,6 +279,7 @@ func (q *Query) GetAll(sliceArgs ...any) (err error) {
 		sliceVals = append(sliceVals, sliceVal)
 	}
 
+	// Iterate through the query results.
 	iter := q.Iter()
 	for iter.Next() {
 		var outputArgs = []any{}
@@ -325,6 +331,8 @@ func (q *Query) GetAll(sliceArgs ...any) (err error) {
 	return nil
 }
 
+// TX represents a transaction on the database. A transaction must end with a
+// Commit or Rollback.
 type TX struct {
 	tx *sql.Tx
 }
@@ -363,8 +371,9 @@ func (txopts *TXOptions) plainTXOptions() *sql.TxOptions {
 	return &sql.TxOptions{Isolation: txopts.Isolation, ReadOnly: txopts.ReadOnly}
 }
 
-// Query takes a context, prepared SQLair Statement and the structs mentioned in the query arguments.
-// It returns a Query object for iterating over the results.
+// Query takes a context, prepared SQLair Statement and the structs mentioned
+// in the query arguments. The query is run on the database when one of Iter,
+// Run, Get or GetAll is executed on the Query.
 func (tx *TX) Query(ctx context.Context, s *Statement, inputArgs ...any) *Query {
 	if ctx == nil {
 		ctx = context.Background()
