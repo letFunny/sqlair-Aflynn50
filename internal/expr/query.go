@@ -73,7 +73,7 @@ func (pe *PreparedExpr) Query(args ...any) (ce *QueryExpr, err error) {
 		}
 	}
 
-	// Query parameteres.
+	// Query parameters.
 	qargs := []any{}
 	for i, typeMember := range pe.inputs {
 		outerType := typeMember.outerType()

@@ -187,7 +187,7 @@ func (p *Parser) Parse(input string) (expr *ParsedExpr, err error) {
 	return &ParsedExpr{p.parts}, nil
 }
 
-// advance increments p.pos until it reaches content that might preceed a token
+// advance increments p.pos until it reaches content that might precede a token
 // we want to parse.
 func (p *Parser) advance() error {
 
@@ -333,12 +333,12 @@ func (p *Parser) skipName() bool {
 }
 
 // Functions with the prefix parse attempt to parse some construct. They return
-// the construct, and an error and/or a bool that indicates if the the construct
+// the construct, and an error and/or a bool that indicates if the construct
 // was successfully parsed.
 //
 // Return cases:
 //  - bool == true, err == nil
-//		The construct was sucessfully parsed
+//		The construct was successfully parsed
 //  - bool == false, err != nil
 //		The construct was recognised but was not correctly formatted
 //  - bool == false, err == nil
@@ -416,7 +416,7 @@ func (p *Parser) parseGoFullName() (fullName, bool, error) {
 }
 
 // parseList takes a parsing function that returns a fullName and parses a
-// bracketed, comma seperated, list.
+// bracketed, comma separated, list.
 func (p *Parser) parseList(parseFn func(p *Parser) (fullName, bool, error)) ([]fullName, bool, error) {
 	cp := p.save()
 	if !p.skipByte('(') {
