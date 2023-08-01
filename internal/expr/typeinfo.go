@@ -122,10 +122,12 @@ func getStructFields(t reflect.Type) ([]*structField, error) {
 		}
 		ft := f.Type
 		k := ft.Kind()
-		// Check if it is an embedded struct. If the pointer to the field type
-		// implementes Scanner then it is not a nested struct.
-		if (k == reflect.Struct || k == reflect.Pointer) && !reflect.PointerTo(ft).Implements(scannerInterface) {
-			if k == reflect.Pointer && ft.Elem().Kind() == reflect.Struct {
+		// Check if the field type is an embedded/nested struct or pointer to
+		// one. If a pointer to the field type implementes Scanner then it is
+		// not a nested struct.
+		if (k == reflect.Struct && !reflect.PointerTo(ft).Implements(scannerInterface)) ||
+			(k == reflect.Pointer && ft.Elem().Kind() == reflect.Struct && !ft.Implements(scannerInterface)) {
+			if k == reflect.Pointer {
 				ft = ft.Elem()
 			}
 			nestedFields, err := getStructFields(ft)

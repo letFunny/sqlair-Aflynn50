@@ -496,6 +496,7 @@ func (s *PackageSuite) TestNulls(c *C) {
 }
 
 func (s *PackageSuite) TestValidGet(c *C) {
+	// Embedded/nested structs.
 	type E1 struct {
 		Street string `db:"street"`
 	}
@@ -510,6 +511,17 @@ func (s *PackageSuite) TestValidGet(c *C) {
 		E1 E1
 		E3 *E3
 	}
+
+	// Struct with pointers.
+	type PointerStruct struct {
+		Street   *string         `db:"street"`
+		District *sql.NullString `db:"district"`
+		ID       *int            `db:"id"`
+	}
+
+	// Pointer variables for pointer struct test.
+	var mainStreet = "Main Street"
+	var oneThousand = 1000
 
 	var tests = []struct {
 		summary  string
@@ -539,6 +551,13 @@ func (s *PackageSuite) TestValidGet(c *C) {
 		inputs:   []any{&EmbeddedStruct{E1: E1{Street: "Main Street"}, E3: &E3{District: "Happy Land", E2: E2{ID: 1000}}}},
 		outputs:  []any{&EmbeddedStruct{E3: &E3{}}},
 		expected: []any{&EmbeddedStruct{E1: E1{Street: "Main Street"}, E3: &E3{District: "Happy Land", E2: E2{ID: 1000}}}},
+	}, {
+		summary:  "pointers struct",
+		query:    "SELECT &PointerStruct.* FROM address WHERE street = $PointerStruct.street",
+		types:    []any{PointerStruct{}},
+		inputs:   []any{&PointerStruct{Street: &mainStreet}},
+		outputs:  []any{&PointerStruct{}},
+		expected: []any{&PointerStruct{Street: &mainStreet, District: &sql.NullString{Valid: true, String: "Happy Land"}, ID: &oneThousand}},
 	}, {
 		summary:  "select into map",
 		query:    "SELECT &M.name FROM person WHERE address_id = $M.p1",

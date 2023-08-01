@@ -46,7 +46,7 @@ type IntMap map[string]int
 type StringMap map[string]string
 
 type E1 struct {
-	Street string `db:"street"`
+	Street *string `db:"street"`
 }
 type E2 struct {
 	ID int `db:"id"`
