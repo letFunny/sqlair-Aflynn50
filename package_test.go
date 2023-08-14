@@ -507,21 +507,20 @@ func (s *PackageSuite) TestValidGet(c *C) {
 		District string `db:"district"`
 		E2       E2
 	}
-	type EmbeddedStruct struct {
-		E1 E1
-		E3 *E3
+	type StructWithEmbedded struct {
+		E1 *E1
+		E3
 	}
-
 	// Struct with pointers.
-	type PointerStruct struct {
+	type StructWithPointers struct {
 		Street   *string         `db:"street"`
 		District *sql.NullString `db:"district"`
 		ID       *int            `db:"id"`
 	}
 
 	// Pointer variables for pointer struct test.
-	var mainStreet = "Main Street"
-	var oneThousand = 1000
+	mainStreet := "Main Street"
+	oneThousand := 1000
 
 	var tests = []struct {
 		summary  string
@@ -546,18 +545,18 @@ func (s *PackageSuite) TestValidGet(c *C) {
 		expected: []any{&Person{30, "Fred", 1000}, &Address{1000, "Happy Land", "Main Street"}, &Manager{30, "Fred", 1000}},
 	}, {
 		summary:  "embedded struct",
-		query:    "SELECT &EmbeddedStruct.* FROM address WHERE id = $EmbeddedStruct.id AND district = $EmbeddedStruct.district AND street = $EmbeddedStruct.street",
-		types:    []any{EmbeddedStruct{}},
-		inputs:   []any{&EmbeddedStruct{E1: E1{Street: "Main Street"}, E3: &E3{District: "Happy Land", E2: E2{ID: 1000}}}},
-		outputs:  []any{&EmbeddedStruct{E3: &E3{}}},
-		expected: []any{&EmbeddedStruct{E1: E1{Street: "Main Street"}, E3: &E3{District: "Happy Land", E2: E2{ID: 1000}}}},
+		query:    "SELECT &StructWithEmbedded.* FROM address WHERE id = $StructWithEmbedded.id AND district = $StructWithEmbedded.district AND street = $StructWithEmbedded.street",
+		types:    []any{StructWithEmbedded{}},
+		inputs:   []any{&StructWithEmbedded{E1: &E1{Street: "Main Street"}, E3: E3{District: "Happy Land", E2: E2{ID: 1000}}}},
+		outputs:  []any{&StructWithEmbedded{E1: &E1{}}},
+		expected: []any{&StructWithEmbedded{E1: &E1{Street: "Main Street"}, E3: E3{District: "Happy Land", E2: E2{ID: 1000}}}},
 	}, {
 		summary:  "pointers struct",
-		query:    "SELECT &PointerStruct.* FROM address WHERE street = $PointerStruct.street",
-		types:    []any{PointerStruct{}},
-		inputs:   []any{&PointerStruct{Street: &mainStreet}},
-		outputs:  []any{&PointerStruct{}},
-		expected: []any{&PointerStruct{Street: &mainStreet, District: &sql.NullString{Valid: true, String: "Happy Land"}, ID: &oneThousand}},
+		query:    "SELECT &StructWithPointers.* FROM address WHERE street = $StructWithPointers.street",
+		types:    []any{StructWithPointers{}},
+		inputs:   []any{&StructWithPointers{Street: &mainStreet}},
+		outputs:  []any{&StructWithPointers{}},
+		expected: []any{&StructWithPointers{Street: &mainStreet, District: &sql.NullString{Valid: true, String: "Happy Land"}, ID: &oneThousand}},
 	}, {
 		summary:  "select into map",
 		query:    "SELECT &M.name FROM person WHERE address_id = $M.p1",

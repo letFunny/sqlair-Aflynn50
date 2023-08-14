@@ -53,9 +53,9 @@ type E3 struct {
 	District string `db:"district"`
 	E2       E2
 }
-type EmbeddedStruct struct {
-	E1 E1
-	E3 *E3
+type StructWithEmbedded struct {
+	E1 *E1
+	E3
 }
 
 var tests = []struct {
@@ -324,21 +324,21 @@ AND z = @sqlair_0 -- The line with $Person.id on it
 	"INSERT INTO arr VALUES (ARRAY[[1,2],[@sqlair_0,4]], ARRAY[[5,6],[@sqlair_1,8]]);",
 }, {
 	"embedded struct asterisk output",
-	"SELECT &EmbeddedStruct.* FROM address WHERE id = 1000",
-	"[Bypass[SELECT ] Output[[] [EmbeddedStruct.*]] Bypass[ FROM address WHERE id = 1000]]",
-	[]any{EmbeddedStruct{}},
+	"SELECT &StructWithEmbedded.* FROM address WHERE id = 1000",
+	"[Bypass[SELECT ] Output[[] [StructWithEmbedded.*]] Bypass[ FROM address WHERE id = 1000]]",
+	[]any{StructWithEmbedded{}},
 	"SELECT district AS _sqlair_0, id AS _sqlair_1, street AS _sqlair_2 FROM address WHERE id = 1000",
 }, {
 	"embedded struct columns output",
-	"SELECT &EmbeddedStruct.district, &EmbeddedStruct.id FROM address WHERE id = 1000",
-	"[Bypass[SELECT ] Output[[] [EmbeddedStruct.district]] Bypass[, ] Output[[] [EmbeddedStruct.id]] Bypass[ FROM address WHERE id = 1000]]",
-	[]any{EmbeddedStruct{}},
+	"SELECT &StructWithEmbedded.district, &StructWithEmbedded.id FROM address WHERE id = 1000",
+	"[Bypass[SELECT ] Output[[] [StructWithEmbedded.district]] Bypass[, ] Output[[] [StructWithEmbedded.id]] Bypass[ FROM address WHERE id = 1000]]",
+	[]any{StructWithEmbedded{}},
 	"SELECT district AS _sqlair_0, id AS _sqlair_1 FROM address WHERE id = 1000",
 }, {
 	"embedded struct input",
-	"SELECT &Address.* FROM address WHERE id = $EmbeddedStruct.id AND district = $EmbeddedStruct.district AND street = $EmbeddedStruct.street",
-	"[Bypass[SELECT ] Output[[] [Address.*]] Bypass[ FROM address WHERE id = ] Input[EmbeddedStruct.id] Bypass[ AND district = ] Input[EmbeddedStruct.district] Bypass[ AND street = ] Input[EmbeddedStruct.street]]",
-	[]any{Address{}, EmbeddedStruct{}},
+	"SELECT &Address.* FROM address WHERE id = $StructWithEmbedded.id AND district = $StructWithEmbedded.district AND street = $StructWithEmbedded.street",
+	"[Bypass[SELECT ] Output[[] [Address.*]] Bypass[ FROM address WHERE id = ] Input[StructWithEmbedded.id] Bypass[ AND district = ] Input[StructWithEmbedded.district] Bypass[ AND street = ] Input[StructWithEmbedded.street]]",
+	[]any{Address{}, StructWithEmbedded{}},
 	"SELECT district AS _sqlair_0, id AS _sqlair_1, street AS _sqlair_2 FROM address WHERE id = @sqlair_0 AND district = @sqlair_1 AND street = @sqlair_2",
 }}
 
@@ -432,7 +432,7 @@ func FuzzParser(f *testing.F) {
 }
 
 func (s *ExprSuite) TestPrepareErrors(c *C) {
-	type DupTags struct {
+	type AmbiguousTags struct {
 		ID1 int `db:"id"`
 		ID2 int `db:"id"`
 	}
@@ -442,7 +442,7 @@ func (s *ExprSuite) TestPrepareErrors(c *C) {
 	type IDS2 struct {
 		ID2 int `db:"id"`
 	}
-	type DupNestedTags struct {
+	type AmbiguousNestedTags struct {
 		IDS1
 		IDS2
 	}
@@ -543,13 +543,13 @@ func (s *ExprSuite) TestPrepareErrors(c *C) {
 		prepareArgs: []any{struct{ f int }{f: 1}},
 		err:         `cannot prepare expression: cannot use anonymous struct`,
 	}, {
-		query:       "SELECT &DupTags.* FROM t",
-		prepareArgs: []any{DupTags{}},
-		err:         `cannot prepare expression: db tag "id" appears in both field "ID2" and field "ID1" of struct "DupTags"`,
+		query:       "SELECT &AmbiguousTags.* FROM t",
+		prepareArgs: []any{AmbiguousTags{}},
+		err:         `cannot prepare expression: db tag "id" appears in both field "ID2" and field "ID1" of struct "AmbiguousTags"`,
 	}, {
-		query:       "SELECT &DupNestedTags.* FROM t",
-		prepareArgs: []any{DupNestedTags{}},
-		err:         `cannot prepare expression: db tag "id" appears in both field "ID2" and field "ID1" of struct "DupNestedTags"`,
+		query:       "SELECT &AmbiguousNestedTags.* FROM t",
+		prepareArgs: []any{AmbiguousNestedTags{}},
+		err:         `cannot prepare expression: db tag "id" appears in both field "ID2" and field "ID1" of struct "AmbiguousNestedTags"`,
 	}, {
 		query:       "SELECT &NoTags.* FROM t",
 		prepareArgs: []any{NoTags{}},

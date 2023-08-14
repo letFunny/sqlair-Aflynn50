@@ -124,7 +124,9 @@ func fieldIsStruct(field reflect.StructField) bool {
 		(k == reflect.Pointer && ft.Elem().Kind() == reflect.Struct && !ft.Implements(scannerInterface))
 }
 
-// getStructFields requires the caller to check that t is a struct.
+// getStructFields returns relevent reflection information about all struct
+// fields included nested/embedded fields.
+// The caller is required to check that t is a struct.
 func getStructFields(structType reflect.Type) ([]*structField, error) {
 	var fields []*structField
 	for i := 0; i < structType.NumField(); i++ {
