@@ -545,11 +545,11 @@ func (s *ExprSuite) TestPrepareErrors(c *C) {
 	}, {
 		query:       "SELECT &DupTags.* FROM t",
 		prepareArgs: []any{DupTags{}},
-		err:         `cannot prepare expression: tag "id" appears in field "ID2" and field "ID1" in type "DupTags"`,
+		err:         `cannot prepare expression: db tag "id" appears in both field "ID2" and field "ID1" of struct "DupTags"`,
 	}, {
 		query:       "SELECT &DupNestedTags.* FROM t",
 		prepareArgs: []any{DupNestedTags{}},
-		err:         `cannot prepare expression: tag "id" appears in field "ID2" and field "ID1" in type "DupNestedTags"`,
+		err:         `cannot prepare expression: db tag "id" appears in both field "ID2" and field "ID1" of struct "DupNestedTags"`,
 	}, {
 		query:       "SELECT &NoTags.* FROM t",
 		prepareArgs: []any{NoTags{}},

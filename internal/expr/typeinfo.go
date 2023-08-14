@@ -112,49 +112,59 @@ func getTypeInfo(value any) (typeInfo, error) {
 	return typeInfo, nil
 }
 
+// fieldIsStruct checks if the field type is an embedded/nested struct or
+// pointer to an embedded/nested struct.
+// If a pointer to the field type implementes Scanner then it is not a nested
+// struct.
+func fieldIsStruct(field reflect.StructField) bool {
+	ft := field.Type
+	k := ft.Kind()
+	// Check if it is a
+	return (k == reflect.Struct && !reflect.PointerTo(ft).Implements(scannerInterface)) ||
+		(k == reflect.Pointer && ft.Elem().Kind() == reflect.Struct && !ft.Implements(scannerInterface))
+}
+
 // getStructFields requires the caller to check that t is a struct.
-func getStructFields(t reflect.Type) ([]*structField, error) {
+func getStructFields(structType reflect.Type) ([]*structField, error) {
 	var fields []*structField
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		if !f.IsExported() {
-			return nil, fmt.Errorf("field %q of struct %s not exported", f.Name, t.Name())
+	for i := 0; i < structType.NumField(); i++ {
+		field := structType.Field(i)
+		if !field.IsExported() {
+			return nil, fmt.Errorf("field %q of struct %s not exported", field.Name, structType.Name())
 		}
-		ft := f.Type
-		k := ft.Kind()
-		// Check if the field type is an embedded/nested struct or pointer to
-		// one. If a pointer to the field type implementes Scanner then it is
-		// not a nested struct.
-		if (k == reflect.Struct && !reflect.PointerTo(ft).Implements(scannerInterface)) ||
-			(k == reflect.Pointer && ft.Elem().Kind() == reflect.Struct && !ft.Implements(scannerInterface)) {
-			if k == reflect.Pointer {
-				ft = ft.Elem()
+		if fieldIsStruct(field) {
+			fieldType := field.Type
+			if fieldType.Kind() == reflect.Pointer {
+				fieldType = fieldType.Elem()
 			}
-			nestedFields, err := getStructFields(ft)
+			// Promote the nested struct fields into the current parent struct
+			// scope, making sure to update the Index list for navigation back
+			// to the original nested location.
+			nestedFields, err := getStructFields(fieldType)
 			if err != nil {
 				return nil, err
 			}
 			for _, nestedField := range nestedFields {
 				nestedField.index = append([]int{i}, nestedField.index...)
-				nestedField.structType = t
+				nestedField.structType = structType
 			}
 			fields = append(fields, nestedFields...)
 		} else {
 			// Fields without a "db" tag are outside of SQLair's remit.
-			tag := f.Tag.Get("db")
+			tag := field.Tag.Get("db")
 			if tag == "" {
 				continue
 			}
 			tag, omitEmpty, err := parseTag(tag)
 			if err != nil {
-				return nil, fmt.Errorf("cannot parse tag for field %s.%s: %s", t.Name(), f.Name, err)
+				return nil, fmt.Errorf("cannot parse tag for field %s.%s: %s", structType.Name(), field.Name, err)
 			}
 			fields = append(fields, &structField{
-				name:       f.Name,
-				index:      f.Index,
+				name:       field.Name,
+				index:      field.Index,
 				omitEmpty:  omitEmpty,
 				tag:        tag,
-				structType: t,
+				structType: structType,
 			})
 		}
 	}
@@ -164,7 +174,6 @@ func getStructFields(t reflect.Type) ([]*structField, error) {
 // generate produces and returns reflection information for the input
 // reflect.Value that is specifically required for SQLair operation.
 func generateTypeInfo(t reflect.Type) (typeInfo, error) {
-	var tags []string
 	switch t.Kind() {
 	case reflect.Map:
 		if t.Key().Kind() != reflect.String {
@@ -180,10 +189,11 @@ func generateTypeInfo(t reflect.Type) (typeInfo, error) {
 		if err != nil {
 			return nil, err
 		}
+		tags := []string{}
 		for _, field := range fields {
 			tags = append(tags, field.tag)
 			if dup, ok := info.tagToField[field.tag]; ok {
-				return nil, fmt.Errorf("tag %q appears in field %q and field %q in type %q",
+				return nil, fmt.Errorf("db tag %q appears in both field %q and field %q of struct %q",
 					field.tag, field.name, dup.name, t.Name())
 			}
 			info.tagToField[field.tag] = field
