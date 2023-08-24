@@ -382,7 +382,7 @@ type Outcome struct {
 }
 
 // Result returns a sql.Result containing information about the query
-// execution.
+// execution. If no result is set Result returns nil.
 func (o *Outcome) Result() sql.Result {
 	return o.result
 }
