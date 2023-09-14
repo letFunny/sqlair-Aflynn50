@@ -38,7 +38,7 @@ func (pe *PreparedExpr) Query(args ...any) (ce *QueryExpr, err error) {
 
 	var inQuery = make(map[reflect.Type]bool)
 	for _, typeMember := range pe.inputs {
-		inQuery[typeMember.outerType()] = true
+		inQuery[typeMember.typ.outerType()] = true
 	}
 
 	var typeValue = make(map[reflect.Type]reflect.Value)
@@ -60,9 +60,9 @@ func (pe *PreparedExpr) Query(args ...any) (ce *QueryExpr, err error) {
 		typeNames = append(typeNames, t.Name())
 		if !inQuery[t] {
 			// Check if we have a type with the same name from a different package.
-			for _, typeMember := range pe.inputs {
-				if t.Name() == typeMember.outerType().Name() {
-					return nil, fmt.Errorf("type %s not passed as a parameter, have %s", typeMember.outerType().String(), t.String())
+			for _, inputTypeMember := range pe.inputs {
+				if t.Name() == inputTypeMember.typ.outerType().Name() {
+					return nil, fmt.Errorf("type %s not passed as a parameter, have %s", inputTypeMember.typ.outerType().String(), t.String())
 				}
 			}
 			return nil, fmt.Errorf("%s not referenced in query", t.Name())
@@ -71,8 +71,8 @@ func (pe *PreparedExpr) Query(args ...any) (ce *QueryExpr, err error) {
 
 	// Query parameteres.
 	qargs := []any{}
-	for i, typeMember := range pe.inputs {
-		outerType := typeMember.outerType()
+	for i, inputTypeMember := range pe.inputs {
+		outerType := inputTypeMember.typ.outerType()
 		v, ok := typeValue[outerType]
 		if !ok {
 			if len(typeNames) == 0 {
@@ -81,17 +81,23 @@ func (pe *PreparedExpr) Query(args ...any) (ce *QueryExpr, err error) {
 				return nil, fmt.Errorf(`type %q not passed as a parameter, have: %s`, outerType.Name(), strings.Join(typeNames, ", "))
 			}
 		}
-		var val reflect.Value
-		switch tm := typeMember.(type) {
+		var argVal any
+		switch tm := inputTypeMember.typ.(type) {
 		case *structField:
-			val = v.Field(tm.index)
+			val := v.Field(tm.index)
+			if tm.omitEmpty && inputTypeMember.sqlContext == INSERT && val.IsZero() {
+				argVal = nil
+			} else {
+				argVal = val.Interface()
+			}
 		case *mapKey:
-			val = v.MapIndex(reflect.ValueOf(tm.name))
+			val := v.MapIndex(reflect.ValueOf(tm.name))
 			if val.Kind() == reflect.Invalid {
 				return nil, fmt.Errorf(`map %q does not contain key %q`, outerType.Name(), tm.name)
 			}
+			argVal = val.Interface()
 		}
-		qargs = append(qargs, sql.Named("sqlair_"+strconv.Itoa(i), val.Interface()))
+		qargs = append(qargs, sql.Named("sqlair_"+strconv.Itoa(i), argVal))
 	}
 	return &QueryExpr{outputs: pe.outputs, sql: pe.sql, args: qargs}, nil
 }

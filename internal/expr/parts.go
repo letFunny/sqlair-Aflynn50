@@ -43,6 +43,10 @@ func (p *inputPart) String() string {
 
 func (p *inputPart) part() {}
 
+func (p *inputPart) isInsert() bool {
+	return len(p.targetColumns) != 0
+}
+
 // outputPart represents a named target output variable in the SQL expression,
 // as well as the source table and column where it will be read from.
 type outputPart struct {
