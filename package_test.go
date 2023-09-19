@@ -1329,11 +1329,11 @@ func (s *PackageSuite) TestOmitEmpty(c *C) {
 		PostalCode int    `db:"postal_code"`
 	}
 
-	var fredAutoId = PersonAutoID{Fullname: "Fred", PostalCode: 1000}
-	var markAutoId = PersonAutoID{Fullname: "Mark", PostalCode: 1500}
-	var maryAutoId = PersonAutoID{Fullname: "Mary", PostalCode: 3500}
-	var daveAutoId = PersonAutoID{Fullname: "James", PostalCode: 4500}
-	var allPeopleAutoId = []PersonAutoID{fredAutoId, markAutoId, maryAutoId, daveAutoId}
+	fredAutoId := PersonAutoID{Fullname: "Fred", PostalCode: 1000}
+	markAutoId := PersonAutoID{Fullname: "Mark", PostalCode: 1500}
+	maryAutoId := PersonAutoID{Fullname: "Mary", PostalCode: 3500}
+	daveAutoId := PersonAutoID{Fullname: "James", PostalCode: 4500}
+	allPeopleAutoId := []PersonAutoID{fredAutoId, markAutoId, maryAutoId, daveAutoId}
 
 	db, err := createTestDB()
 	c.Assert(err, IsNil)
