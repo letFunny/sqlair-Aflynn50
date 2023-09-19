@@ -1322,19 +1322,19 @@ func (s *PackageSuite) TestIterMethodOrder(c *C) {
 	c.Assert(err, IsNil)
 }
 
-type PersonAutoID struct {
-	ID         int    `db:"id,omitempty"`
-	Fullname   string `db:"name"`
-	PostalCode int    `db:"postal_code"`
-}
-
-var fredAutoId = PersonAutoID{Fullname: "Fred", PostalCode: 1000}
-var markAutoId = PersonAutoID{Fullname: "Mark", PostalCode: 1500}
-var maryAutoId = PersonAutoID{Fullname: "Mary", PostalCode: 3500}
-var daveAutoId = PersonAutoID{Fullname: "James", PostalCode: 4500}
-var allPeopleAutoId = []PersonAutoID{fredAutoId, markAutoId, maryAutoId, daveAutoId}
-
 func (s *PackageSuite) TestOmitEmpty(c *C) {
+	type PersonAutoID struct {
+		ID         int    `db:"id,omitempty"`
+		Fullname   string `db:"name"`
+		PostalCode int    `db:"postal_code"`
+	}
+
+	var fredAutoId = PersonAutoID{Fullname: "Fred", PostalCode: 1000}
+	var markAutoId = PersonAutoID{Fullname: "Mark", PostalCode: 1500}
+	var maryAutoId = PersonAutoID{Fullname: "Mary", PostalCode: 3500}
+	var daveAutoId = PersonAutoID{Fullname: "James", PostalCode: 4500}
+	var allPeopleAutoId = []PersonAutoID{fredAutoId, markAutoId, maryAutoId, daveAutoId}
+
 	db, err := createTestDB()
 	c.Assert(err, IsNil)
 
@@ -1348,7 +1348,7 @@ func (s *PackageSuite) TestOmitEmpty(c *C) {
 	c.Assert(err, IsNil)
 	err = db.Query(nil, createPerson).Run()
 	c.Assert(err, IsNil)
-	defer dropTables(c, db, "personAutoId")
+	defer dropTables(c, db, "personAutoID")
 
 	insertPerson, err := sqlair.Prepare("INSERT INTO personAutoID (*) VALUES ($PersonAutoID.*)", PersonAutoID{})
 	for _, p := range allPeopleAutoId {
@@ -1356,26 +1356,28 @@ func (s *PackageSuite) TestOmitEmpty(c *C) {
 		c.Assert(err, IsNil)
 	}
 
+	// Assert that the inserted people got the ID field populated automatically
+	// and in the correct order.
 	outPeople := []PersonAutoID{}
 	getAllPeople, err := sqlair.Prepare("SELECT * AS &PersonAutoID.* FROM personAutoID ORDER BY id", PersonAutoID{})
 	c.Assert(err, IsNil)
 	err = db.Query(nil, getAllPeople).GetAll(&outPeople)
 	c.Assert(err, IsNil)
-	// Assert that ID has been populated automatically and in order.
 	for i, p := range outPeople {
 		c.Assert(p.Fullname, Equals, allPeopleAutoId[i].Fullname)
 		c.Assert(p.PostalCode, Equals, allPeopleAutoId[i].PostalCode)
-		// Numeration starts at 1.
+		// Enumeration starts at 1.
 		c.Assert(p.ID, Equals, i+1)
 	}
 
+	// Assert that using an omitempty field is not actually omitted if it is not
+	// inside an INSERT.
 	personWithId := outPeople[0]
 	outPeople = []PersonAutoID{}
 	getPerson, err := sqlair.Prepare("SELECT * AS &PersonAutoID.* FROM personAutoID WHERE id = $PersonAutoID.id", PersonAutoID{})
 	c.Assert(err, IsNil)
 	err = db.Query(nil, getPerson, personWithId).GetAll(&outPeople)
 	c.Assert(err, IsNil)
-	// Assert that using an omitempty field outside of INSERT does not omit it.
 	c.Assert(outPeople, HasLen, 1)
 	c.Assert(outPeople[0].Fullname, Equals, personWithId.Fullname)
 	c.Assert(outPeople[0].PostalCode, Equals, personWithId.PostalCode)

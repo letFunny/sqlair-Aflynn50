@@ -216,7 +216,7 @@ func prepareInput(ti typeNameToInfo, p *inputPart) (inCols []fullName, inputType
 		if err != nil {
 			return nil, nil, err
 		}
-		return []fullName{}, []inputTypeMember{inputTypeMember{typ: tm, sqlContext: None}}, nil
+		return []fullName{}, []inputTypeMember{{typeMember: tm, isInsert: false}}, nil
 	}
 
 	// Prepare input expressions in insert statements.
@@ -231,7 +231,7 @@ func prepareInput(ti typeNameToInfo, p *inputPart) (inCols []fullName, inputType
 	}
 	inputTypeMembers = make([]inputTypeMember, len(typeMembers))
 	for i, t := range typeMembers {
-		inputTypeMembers[i] = inputTypeMember{typ: t, sqlContext: INSERT}
+		inputTypeMembers[i] = inputTypeMember{typeMember: t, isInsert: true}
 	}
 
 	columnInInput := make(map[fullName]bool)

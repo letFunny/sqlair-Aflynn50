@@ -7,7 +7,7 @@ import (
 	"github.com/canonical/sqlair"
 )
 
-func Example() {
+func Example_omitempty() {
 	type Person struct {
 		ID         int    `db:"id,omitempty"`
 		Fullname   string `db:"name"`
@@ -20,7 +20,7 @@ func Example() {
 	dave := Person{Fullname: "James", PostalCode: 4500}
 	allPeople := []Person{fred, mark, mary, dave}
 
-	sqldb, err := sql.Open("sqlite3", ":memory:")
+	sqldb, err := sql.Open("sqlite3", "file:exampleOmitTest.db?cache=shared&mode=memory")
 	if err != nil {
 		panic(err)
 	}
@@ -37,6 +37,16 @@ func Example() {
 	if err != nil {
 		panic(err)
 	}
+	defer func() {
+		stmt, err := sqlair.Prepare("DROP TABLE person")
+		if err != nil {
+			panic(err)
+		}
+		err = db.Query(nil, stmt).Run()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	insertPerson := sqlair.MustPrepare("INSERT INTO person (*) VALUES ($Person.*)", Person{})
 	for _, p := range allPeople {

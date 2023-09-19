@@ -38,7 +38,7 @@ func (pe *PreparedExpr) Query(args ...any) (ce *QueryExpr, err error) {
 
 	var inQuery = make(map[reflect.Type]bool)
 	for _, typeMember := range pe.inputs {
-		inQuery[typeMember.typ.outerType()] = true
+		inQuery[typeMember.outerType()] = true
 	}
 
 	var typeValue = make(map[reflect.Type]reflect.Value)
@@ -61,8 +61,8 @@ func (pe *PreparedExpr) Query(args ...any) (ce *QueryExpr, err error) {
 		if !inQuery[t] {
 			// Check if we have a type with the same name from a different package.
 			for _, inputTypeMember := range pe.inputs {
-				if t.Name() == inputTypeMember.typ.outerType().Name() {
-					return nil, fmt.Errorf("type %s not passed as a parameter, have %s", inputTypeMember.typ.outerType().String(), t.String())
+				if t.Name() == inputTypeMember.outerType().Name() {
+					return nil, fmt.Errorf("type %s not passed as a parameter, have %s", inputTypeMember.outerType().String(), t.String())
 				}
 			}
 			return nil, fmt.Errorf("%s not referenced in query", t.Name())
@@ -72,7 +72,7 @@ func (pe *PreparedExpr) Query(args ...any) (ce *QueryExpr, err error) {
 	// Query parameteres.
 	qargs := []any{}
 	for i, inputTypeMember := range pe.inputs {
-		outerType := inputTypeMember.typ.outerType()
+		outerType := inputTypeMember.outerType()
 		v, ok := typeValue[outerType]
 		if !ok {
 			if len(typeNames) == 0 {
@@ -82,10 +82,10 @@ func (pe *PreparedExpr) Query(args ...any) (ce *QueryExpr, err error) {
 			}
 		}
 		var argVal any
-		switch tm := inputTypeMember.typ.(type) {
+		switch tm := inputTypeMember.typeMember.(type) {
 		case *structField:
 			val := v.Field(tm.index)
-			if tm.omitEmpty && inputTypeMember.sqlContext == INSERT && val.IsZero() {
+			if tm.omitEmpty && inputTypeMember.isInsert && val.IsZero() {
 				argVal = nil
 			} else {
 				argVal = val.Interface()

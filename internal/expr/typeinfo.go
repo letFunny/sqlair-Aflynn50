@@ -115,16 +115,9 @@ func (mi *mapInfo) getAllMembers() ([]typeMember, error) {
 	return nil, fmt.Errorf(`map type %q cannot be used with asterisk`, mi.mapType.Name())
 }
 
-type sqlContext int
-
-const (
-	None sqlContext = iota
-	INSERT
-)
-
 type inputTypeMember struct {
-	typ        typeMember
-	sqlContext sqlContext
+	isInsert bool
+	typeMember
 }
 
 var _ typeInfo = &mapInfo{}
