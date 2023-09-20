@@ -69,7 +69,7 @@ func (ti typeNameToInfo) lookupInfo(typeName string) (typeInfo, error) {
 		if len(ts) == 0 {
 			return nil, fmt.Errorf(`type %q not passed as a parameter`, typeName)
 		} else {
-			return nil, fmt.Errorf(`type %q not passed as a parameter, have: %s`, typeName, strings.Join(ts, ", "))
+			return nil, fmt.Errorf(`type %q not passed as a parameter, have "%s"`, typeName, strings.Join(ts, `", "`))
 		}
 	}
 	return info, nil
@@ -127,7 +127,7 @@ func prepareColumnsAndTypes(ti typeNameToInfo, columns []fullName, types []fullN
 		}
 		return genCols, typeMembers, nil
 	} else if numColumns > 1 && starColumns > 0 {
-		return nil, nil, fmt.Errorf("invalid asterisk in expression columns")
+		return nil, nil, fmt.Errorf("invalid asterisk in columns")
 	}
 
 	// Case 2: Explicit columns, single asterisk type.
@@ -149,7 +149,7 @@ func prepareColumnsAndTypes(ti typeNameToInfo, columns []fullName, types []fullN
 		}
 		return genCols, typeMembers, nil
 	} else if starTypes > 0 && numTypes > 1 {
-		return nil, nil, fmt.Errorf("invalid asterisk in expression types")
+		return nil, nil, fmt.Errorf("invalid asterisk in types")
 	}
 
 	// Case 3: Explicit columns and types.
@@ -181,9 +181,32 @@ func prepareColumnsAndTypes(ti typeNameToInfo, columns []fullName, types []fullN
 func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, []typeMember, error) {
 	outCols, typeMembers, err := prepareColumnsAndTypes(ti, p.sourceColumns, p.targetTypes)
 	if err != nil {
-		err = fmt.Errorf("output expression: %s: %s", p.raw, err)
+		err = fmt.Errorf("output expression: %s: %s", err, p.raw)
 	}
 	return outCols, typeMembers, err
+}
+
+// isStandaloneInput returns true if the input expression occurs on its own,
+// not inside an INSERT statement.
+// For example:
+//
+//	"... WHERE x = $P.name"
+func isStandaloneInput(p *inputPart) bool {
+	return len(p.targetColumns) == 0
+}
+
+// hasMultipleTypes checks if there is more than one type to take the input
+// parameter from in the input part.
+func hasMultipleTypes(p *inputPart) bool {
+	return len(p.sourceTypes) > 1
+}
+
+// hasStarTypes returns true if the input expression has an asterisk.
+// For example:
+//
+//	"$P.*"
+func hasStarTypes(p *inputPart) bool {
+	return starCount(p.sourceTypes) > 0
 }
 
 // prepareInput checks that the input expression is correctly formatted,
@@ -191,21 +214,18 @@ func prepareOutput(ti typeNameToInfo, p *outputPart) ([]fullName, []typeMember, 
 func prepareInput(ti typeNameToInfo, p *inputPart) (inCols []fullName, inputTypeMembers []inputTypeMember, err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("input expression: %s: %s", p.raw, err)
+			err = fmt.Errorf("input expression: %s: %s", err, p.raw)
 		}
 	}()
-
-	numTypes := len(p.sourceTypes)
-	starTypes := starCount(p.sourceTypes)
 
 	// Check for standalone input expression and prepare if found.
 	// For example:
 	//  "$P.name"
-	if !p.isInsert() {
-		if numTypes != 1 {
+	if isStandaloneInput(p) {
+		if hasMultipleTypes(p) {
 			return nil, nil, fmt.Errorf("internal error: cannot group standalone input expressions")
 		}
-		if starTypes > 0 {
+		if hasStarTypes(p) {
 			return nil, nil, fmt.Errorf("invalid asterisk")
 		}
 		info, err := ti.lookupInfo(p.sourceTypes[0].prefix)
@@ -305,11 +325,11 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 				return nil, err
 			}
 
-			if p.isInsert() {
-				sql.WriteString(genInsertSQL(inCols, &inCount))
-			} else {
+			if isStandaloneInput(p) {
 				sql.WriteString("@sqlair_" + strconv.Itoa(inCount))
 				inCount += 1
+			} else {
+				sql.WriteString(genInsertSQL(inCols, &inCount))
 			}
 			inputs = append(inputs, inputTypeMembers...)
 		case *outputPart:
@@ -320,7 +340,7 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 
 			for _, tm := range typeMembers {
 				if ok := typeMemberInOutputs[tm]; ok {
-					return nil, fmt.Errorf("member %q of type %q appears more than once in outputs", tm.memberName(), tm.outerType().Name())
+					return nil, fmt.Errorf("member %q of type %q appears more than once in output expressions", tm.memberName(), tm.outerType().Name())
 				}
 				typeMemberInOutputs[tm] = true
 			}
