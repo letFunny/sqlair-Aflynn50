@@ -636,7 +636,19 @@ func (p *Parser) parseTargetTypes() (types []typeName, parentheses bool, ok bool
 func (p *Parser) parseOutputExpression() (*outputPart, bool, error) {
 	start := p.pos
 
-	// Case 1: There are no columns e.g. "&Person.*".
+	cp := p.save()
+
+	// Case 1: slice range, "&Type[low:high]"
+	// Using a slice as an output is an error, we add the case here to
+	// improve the error message.
+	if p.skipByte('&') {
+		if st, ok := p.parseSliceRange(); ok {
+			return nil, false, fmt.Errorf("column %d: cannot use slice type %s in output expression", cp.pos, st.Name())
+		}
+		cp.restore()
+	}
+
+	// Case 2: There are no columns e.g. "&Person.*".
 	if targetType, ok, err := p.parseTargetType(); err != nil {
 		return nil, false, err
 	} else if ok {
@@ -647,9 +659,7 @@ func (p *Parser) parseOutputExpression() (*outputPart, bool, error) {
 		}, true, nil
 	}
 
-	cp := p.save()
-
-	// Case 2: There are columns e.g. "p.col1 AS &Person.*".
+	// Case 3: There are columns e.g. "p.col1 AS &Person.*".
 	if cols, parenCols, ok := p.parseColumns(); ok {
 		p.skipBlanks()
 		if p.skipString("AS") {
@@ -683,19 +693,18 @@ func (p *Parser) parseInputExpression() (*inputPart, bool, error) {
 		return nil, false, nil
 	}
 
-	// Case 1: slice range, $Type[low:high]
+	// TODO should we add this case to the input and throw an error?
+	// Case 1: slice range, "$Type[low:high]"
 	if tn, ok := p.parseSliceRange(); ok {
 		return &inputPart{sourceType: tn, raw: p.input[cp.pos:p.pos]}, true, nil
 	}
 
-	// Case 2: struct or dictionary, $Type.something
+	// Case 2: struct or dictionary, "$Type.something"
 	if tn, ok, err := p.parseTypeName(); ok {
 		return &inputPart{sourceType: tn, raw: p.input[cp.pos:p.pos]}, true, nil
 	} else if err != nil {
 		return nil, false, err
 	}
-
-	// TODO should we add this case to the input and throw an error?
 
 	cp.restore()
 	return nil, false, nil

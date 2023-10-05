@@ -2,6 +2,7 @@ package expr_test
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 
 	"github.com/canonical/sqlair"
@@ -260,24 +261,6 @@ AND z = @sqlair_0 -- The line with $Person.id on it
 	[]any{},
 	"SELECT person.*, address.district FROM person JOIN address ON person.address_id = address.id WHERE person.name = 'Fred'",
 }, {
-	"single slice",
-	"SELECT name FROM person WHERE id IN ($S[:])",
-	"[Bypass[SELECT name FROM person WHERE id IN (] Input[S[:]] Bypass[)]]",
-	[]any{sqlair.S{}},
-	"SELECT name FROM person WHERE id IN (@sqlair_0, @sqlair_1, @sqlair_2, @sqlair_3, @sqlair_4, @sqlair_5, @sqlair_6, @sqlair_7)",
-}, {
-	"many slices",
-	"SELECT * AS &Person.* FROM person WHERE id IN ($Person.id, $S[:], $Manager.id, $IntSlice[:], $StringSlice[:])",
-	"[Bypass[SELECT ] Output[[*] [Person.*]] Bypass[ FROM person WHERE id IN (] Input[Person.id] Bypass[, ] Input[S[:]] Bypass[, ] Input[Manager.id] Bypass[, ] Input[IntSlice[:]] Bypass[, ] Input[StringSlice[:]] Bypass[)]]",
-	[]any{sqlair.S{}, Person{}, Manager{}, IntSlice{}, StringSlice{}},
-	"SELECT address_id AS _sqlair_0, id AS _sqlair_1, name AS _sqlair_2 FROM person WHERE id IN (@sqlair_0, @sqlair_1, @sqlair_2, @sqlair_3, @sqlair_4, @sqlair_5, @sqlair_6, @sqlair_7, @sqlair_8, @sqlair_9, @sqlair_10, @sqlair_11, @sqlair_12, @sqlair_13, @sqlair_14, @sqlair_15, @sqlair_16, @sqlair_17, @sqlair_18, @sqlair_19, @sqlair_20, @sqlair_21, @sqlair_22, @sqlair_23, @sqlair_24, @sqlair_25)",
-}, {
-	"slices and other expressions in IN statement",
-	`SELECT name FROM person WHERE id IN ($S[:], func(1,2), "one", $IntSlice[:])`,
-	`[Bypass[SELECT name FROM person WHERE id IN (] Input[S[:]] Bypass[, func(1,2), "one", ] Input[IntSlice[:]] Bypass[)]]`,
-	[]any{sqlair.S{}, IntSlice{}},
-	`SELECT name FROM person WHERE id IN (@sqlair_0, @sqlair_1, @sqlair_2, @sqlair_3, @sqlair_4, @sqlair_5, @sqlair_6, @sqlair_7, func(1,2), "one", @sqlair_8, @sqlair_9, @sqlair_10, @sqlair_11, @sqlair_12, @sqlair_13, @sqlair_14, @sqlair_15)`,
-}, {
 	"insert",
 	"INSERT INTO person (name) VALUES $Person.name",
 	"[Bypass[INSERT INTO person (name) VALUES ] Input[Person.name]]",
@@ -347,8 +330,8 @@ func (s *ExprSuite) TestExpr(c *C) {
 		if preparedExpr, err = parsedExpr.Prepare(t.prepareArgs...); err != nil {
 			c.Errorf("test %d failed (Prepare):\nsummary: %s\nquery: %s\nexpected: %s\nerr: %s\n", i, t.summary, t.query, t.expectedPrepared, err)
 		} else {
-			c.Check(preparedExpr.SQL(), Equals, t.expectedPrepared,
-				Commentf("test %d failed (Prepare):\nsummary: %s\nquery: %s\nexpected: %s\nactual:   %s\n", i, t.summary, t.query, t.expectedPrepared, preparedExpr.SQL()))
+			c.Check(expr.PreparedSQL(preparedExpr), Equals, t.expectedPrepared,
+				Commentf("test %d failed (Prepare):\nsummary: %s\nquery: %s\nexpected: %s\nactual:   %s\n", i, t.summary, t.query, t.expectedPrepared, expr.PreparedSQL(preparedExpr)))
 		}
 	}
 }
@@ -412,6 +395,9 @@ func (s *ExprSuite) TestParseErrors(c *C) {
 	}, {
 		query: "SELECT * AS &S FROM t",
 		err:   `cannot parse expression: column 14: unqualified type, expected S.* or S.<db tag> or S[:]`,
+	}, {
+		query: "SELECT &S[:] FROM t",
+		err:   `cannot parse expression: column 7: cannot use slice type S in output expression`,
 	}}
 
 	for _, t := range tests {
@@ -501,15 +487,15 @@ func (s *ExprSuite) TestPrepareErrors(c *C) {
 	}, {
 		query:       "SELECT street FROM t WHERE x = $Address.street",
 		prepareArgs: []any{Person{}, Manager{}},
-		err:         `cannot prepare statement: input expression: type "Address" not passed as a parameter (have "Manager", "Person"): $Address.street`,
+		err:         `cannot prepare statement: input expression: parameter with type "Address" missing (have "Manager", "Person"): $Address.street`,
 	}, {
 		query:       "SELECT street AS &Address.street FROM t",
 		prepareArgs: []any{},
-		err:         `cannot prepare statement: output expression: type "Address" not passed as a parameter: street AS &Address.street`,
+		err:         `cannot prepare statement: output expression: parameter with type "Address" missing: street AS &Address.street`,
 	}, {
 		query:       "SELECT street AS &Address.id FROM t",
 		prepareArgs: []any{Person{}},
-		err:         `cannot prepare statement: output expression: type "Address" not passed as a parameter (have "Person"): street AS &Address.id`,
+		err:         `cannot prepare statement: output expression: parameter with type "Address" missing (have "Person"): street AS &Address.id`,
 	}, {
 		query:       "SELECT * AS &Person.* FROM t",
 		prepareArgs: []any{func() {}},
@@ -550,16 +536,14 @@ func (s *ExprSuite) TestPrepareErrors(c *C) {
 		query:       "SELECT name FROM person WHERE id IN ($Person.*)",
 		prepareArgs: []any{Person{}},
 		err:         `cannot prepare statement: input expression: asterisk used with struct in invalid context: $Person.*`,
-	}, {
-		query:       "SELECT &S.* FROM t",
-		prepareArgs: []any{sqlair.S{}},
-		err:         `cannot prepare statement: output expression: cannot use slice type "S" in output expression: &S.*`,
 	}}
 
 	for i, test := range tests {
 		parser := expr.NewParser()
 		parsedExpr, err := parser.Parse(test.query)
 		if err != nil {
+			fmt.Println(test)
+			fmt.Println(parsedExpr, err)
 			c.Fatal(err)
 		}
 		_, err = parsedExpr.Prepare(test.prepareArgs...)
@@ -621,59 +605,105 @@ func (s *ExprSuite) TestPrepareMapError(c *C) {
 	}
 }
 
+func (s *ExprSuite) TestSliceQuery(c *C) {
+	tests := []struct {
+		summery     string
+		query       string
+		parts       string
+		types       []any
+		inputs      []any
+		expectedSQL string
+	}{{
+		"single slice",
+		"SELECT name FROM person WHERE id IN ($S[:])",
+		"[Bypass[SELECT name FROM person WHERE id IN (] Input[S[:]] Bypass[)]]",
+		[]any{sqlair.S{}},
+		[]any{sqlair.S{1, 2, 3}},
+		"SELECT name FROM person WHERE id IN (@sqlair_0, @sqlair_1, @sqlair_2)",
+	}, {
+		"many slices",
+		"SELECT * AS &Person.* FROM person WHERE id IN ($Person.id, $S[:], $Manager.id, $IntSlice[:], $StringSlice[:])",
+		"[Bypass[SELECT ] Output[[*] [Person.*]] Bypass[ FROM person WHERE id IN (] Input[Person.id] Bypass[, ] Input[S[:]] Bypass[, ] Input[Manager.id] Bypass[, ] Input[IntSlice[:]] Bypass[, ] Input[StringSlice[:]] Bypass[)]]",
+		[]any{sqlair.S{}, Person{}, Manager{}, IntSlice{}, StringSlice{}},
+		[]any{sqlair.S{1, 2, 3}, Person{ID: 1}, Manager{ID: 1}, IntSlice{4, 5, 6}, StringSlice{"7", "8", "9"}},
+		"SELECT address_id AS _sqlair_0, id AS _sqlair_1, name AS _sqlair_2 FROM person WHERE id IN (@sqlair_0, @sqlair_1, @sqlair_2, @sqlair_3, @sqlair_4, @sqlair_5, @sqlair_6, @sqlair_7, @sqlair_8, @sqlair_9, @sqlair_10)",
+	}, {
+		"slices and other expressions in IN statement",
+		`SELECT name FROM person WHERE id IN ($S[:], func(1,2), "one", $IntSlice[:])`,
+		`[Bypass[SELECT name FROM person WHERE id IN (] Input[S[:]] Bypass[, func(1,2), "one", ] Input[IntSlice[:]] Bypass[)]]`,
+		[]any{sqlair.S{}, IntSlice{}},
+		[]any{sqlair.S{1, 2, 3, 4, 5, 6, 7, 8}, IntSlice{1, 2, 3, 4, 5, 6, 7, 8}},
+		`SELECT name FROM person WHERE id IN (@sqlair_0, @sqlair_1, @sqlair_2, @sqlair_3, @sqlair_4, @sqlair_5, @sqlair_6, @sqlair_7, func(1,2), "one", @sqlair_8, @sqlair_9, @sqlair_10, @sqlair_11, @sqlair_12, @sqlair_13, @sqlair_14, @sqlair_15)`,
+	}}
+	for _, t := range tests {
+		parser := expr.NewParser()
+		parsedExpr, err := parser.Parse(t.query)
+		c.Assert(err, IsNil)
+		c.Assert(parsedExpr.String(), Equals, t.parts)
+
+		preparedExpr, err := parsedExpr.Prepare(t.types...)
+		c.Assert(err, IsNil)
+
+		_, stmtCriterion, err := preparedExpr.Query(t.inputs...)
+		c.Assert(err, IsNil)
+
+		sql := preparedExpr.SQL(stmtCriterion)
+		c.Assert(sql, Equals, t.expectedSQL,
+			Commentf("test %d failed:\ninput: %s", t.summery, t.query))
+	}
+}
+
 func (s *ExprSuite) TestValidQuery(c *C) {
 	tests := []struct {
 		query       string
 		prepareArgs []any
 		queryArgs   []any
 		queryValues []any
-		tempStmt    string
 	}{{
-		query:       "SELECT * AS &Address.* FROM t WHERE x = $Person.name",
-		prepareArgs: []any{Address{}, Person{}},
-		queryArgs:   []any{Person{Fullname: "Jimany Johnson"}},
-		queryValues: []any{sql.Named("sqlair_0", "Jimany Johnson")},
+		"SELECT * AS &Address.* FROM t WHERE x = $Person.name",
+		[]any{Address{}, Person{}},
+		[]any{Person{Fullname: "Jimany Johnson"}},
+		[]any{sql.Named("sqlair_0", "Jimany Johnson")},
 	}, {
-		query:       "SELECT foo FROM t WHERE x = $Address.street, y = $Person.id",
-		prepareArgs: []any{Person{}, Address{}},
-		queryArgs:   []any{Person{ID: 666}, Address{Street: "Highway to Hell"}},
-		queryValues: []any{sql.Named("sqlair_0", "Highway to Hell"), sql.Named("sqlair_1", 666)},
+		"SELECT foo FROM t WHERE x = $Address.street, y = $Person.id",
+		[]any{Person{}, Address{}},
+		[]any{Person{ID: 666}, Address{Street: "Highway to Hell"}},
+		[]any{sql.Named("sqlair_0", "Highway to Hell"), sql.Named("sqlair_1", 666)},
 	}, {
-		query:       "SELECT foo FROM t WHERE x = $Address.street, y = $Person.id",
-		prepareArgs: []any{Person{}, Address{}},
-		queryArgs:   []any{&Person{ID: 666}, &Address{Street: "Highway to Hell"}},
-		queryValues: []any{sql.Named("sqlair_0", "Highway to Hell"), sql.Named("sqlair_1", 666)},
+		"SELECT foo FROM t WHERE x = $Address.street, y = $Person.id",
+		[]any{Person{}, Address{}},
+		[]any{&Person{ID: 666}, &Address{Street: "Highway to Hell"}},
+		[]any{sql.Named("sqlair_0", "Highway to Hell"), sql.Named("sqlair_1", 666)},
 	}, {
-		query:       "SELECT * AS &Address.* FROM t WHERE x = $M.fullname",
-		prepareArgs: []any{Address{}, sqlair.M{}},
-		queryArgs:   []any{sqlair.M{"fullname": "Jimany Johnson"}},
-		queryValues: []any{sql.Named("sqlair_0", "Jimany Johnson")},
+		"SELECT * AS &Address.* FROM t WHERE x = $M.fullname",
+		[]any{Address{}, sqlair.M{}},
+		[]any{sqlair.M{"fullname": "Jimany Johnson"}},
+		[]any{sql.Named("sqlair_0", "Jimany Johnson")},
 	}, {
-		query:       "SELECT foo FROM t WHERE x = $M.street, y = $Person.id",
-		prepareArgs: []any{Person{}, sqlair.M{}},
-		queryArgs:   []any{Person{ID: 666}, sqlair.M{"street": "Highway to Hell"}},
-		queryValues: []any{sql.Named("sqlair_0", "Highway to Hell"), sql.Named("sqlair_1", 666)},
+		"SELECT foo FROM t WHERE x = $M.street, y = $Person.id",
+		[]any{Person{}, sqlair.M{}},
+		[]any{Person{ID: 666}, sqlair.M{"street": "Highway to Hell"}},
+		[]any{sql.Named("sqlair_0", "Highway to Hell"), sql.Named("sqlair_1", 666)},
 	}, {
-		query:       "SELECT * AS &Address.* FROM t WHERE x = $StringMap.fullname",
-		prepareArgs: []any{Address{}, StringMap{}},
-		queryArgs:   []any{StringMap{"fullname": "Jimany Johnson"}},
-		queryValues: []any{sql.Named("sqlair_0", "Jimany Johnson")},
+		"SELECT * AS &Address.* FROM t WHERE x = $StringMap.fullname",
+		[]any{Address{}, StringMap{}},
+		[]any{StringMap{"fullname": "Jimany Johnson"}},
+		[]any{sql.Named("sqlair_0", "Jimany Johnson")},
 	}, {
-		query:       "SELECT foo FROM t WHERE x = $StringMap.street, y = $Person.id",
-		prepareArgs: []any{Person{}, StringMap{}},
-		queryArgs:   []any{Person{ID: 666}, StringMap{"street": "Highway to Hell"}},
-		queryValues: []any{sql.Named("sqlair_0", "Highway to Hell"), sql.Named("sqlair_1", 666)},
+		"SELECT foo FROM t WHERE x = $StringMap.street, y = $Person.id",
+		[]any{Person{}, StringMap{}},
+		[]any{Person{ID: 666}, StringMap{"street": "Highway to Hell"}},
+		[]any{sql.Named("sqlair_0", "Highway to Hell"), sql.Named("sqlair_1", 666)},
 	}, {
-		query:       "SELECT name FROM person WHERE id IN ($S[:])",
-		prepareArgs: []any{sqlair.S{}},
-		queryArgs:   []any{sqlair.S{1, 2, 3, 4, 5, 6}},
-		queryValues: []any{sql.Named("sqlair_0", 1), sql.Named("sqlair_1", 2), sql.Named("sqlair_2", 3), sql.Named("sqlair_3", 4), sql.Named("sqlair_4", 5), sql.Named("sqlair_5", 6), sql.Named("sqlair_6", nil), sql.Named("sqlair_7", nil)},
+		"SELECT name FROM person WHERE id IN ($S[:])",
+		[]any{sqlair.S{}},
+		[]any{sqlair.S{1, 2, 3, 4, 5, 6}},
+		[]any{sql.Named("sqlair_0", 1), sql.Named("sqlair_1", 2), sql.Named("sqlair_2", 3), sql.Named("sqlair_3", 4), sql.Named("sqlair_4", 5), sql.Named("sqlair_5", 6)},
 	}, {
-		query:       "SELECT name FROM person WHERE id IN ($S[:])",
-		prepareArgs: []any{sqlair.S{}},
-		queryArgs:   []any{sqlair.S{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}},
-		queryValues: []any{sql.Named("sqlair_0", 1), sql.Named("sqlair_1", 2), sql.Named("sqlair_2", 3), sql.Named("sqlair_3", 4), sql.Named("sqlair_4", 5), sql.Named("sqlair_5", 6), sql.Named("sqlair_6", 7), sql.Named("sqlair_7", 8), sql.Named("sqlair_8", 9), sql.Named("sqlair_9", 10)},
-		tempStmt:    "SELECT name FROM person WHERE id IN (@sqlair_0, @sqlair_1, @sqlair_2, @sqlair_3, @sqlair_4, @sqlair_5, @sqlair_6, @sqlair_7, @sqlair_8, @sqlair_9)",
+		"SELECT name FROM person WHERE id IN ($S[:], $IntSlice[:])",
+		[]any{sqlair.S{}, IntSlice{}},
+		[]any{sqlair.S{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, IntSlice{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}},
+		[]any{sql.Named("sqlair_0", 1), sql.Named("sqlair_1", 2), sql.Named("sqlair_2", 3), sql.Named("sqlair_3", 4), sql.Named("sqlair_4", 5), sql.Named("sqlair_5", 6), sql.Named("sqlair_6", 7), sql.Named("sqlair_7", 8), sql.Named("sqlair_8", 9), sql.Named("sqlair_9", 10), sql.Named("sqlair_10", 1), sql.Named("sqlair_11", 2), sql.Named("sqlair_12", 3), sql.Named("sqlair_13", 4), sql.Named("sqlair_14", 5), sql.Named("sqlair_15", 6), sql.Named("sqlair_16", 7), sql.Named("sqlair_17", 8), sql.Named("sqlair_18", 9), sql.Named("sqlair_19", 10)},
 	}}
 	for _, t := range tests {
 		parser := expr.NewParser()
@@ -687,11 +717,10 @@ func (s *ExprSuite) TestValidQuery(c *C) {
 			c.Fatal(err)
 		}
 
-		query, tempStmt, err := preparedExpr.Query(t.queryArgs...)
+		query, _, err := preparedExpr.Query(t.queryArgs...)
 		if err != nil {
 			c.Fatal(err)
 		}
-		c.Assert(tempStmt, Equals, t.tempStmt)
 		c.Assert(query.QueryArgs(), DeepEquals, t.queryValues)
 	}
 }
@@ -706,7 +735,7 @@ func (s *ExprSuite) TestQueryError(c *C) {
 		query:       "SELECT street FROM t WHERE x = $Address.street, y = $Person.name",
 		prepareArgs: []any{Address{}, Person{}},
 		queryArgs:   []any{Address{Street: "Dead end road"}},
-		err:         `invalid input parameter: type "Person" not passed as a parameter, have: Address`,
+		err:         `invalid input parameter: parameter with type "Person" missing (have "Address")`,
 	}, {
 		query:       "SELECT street FROM t WHERE x = $Address.street, y = $Person.name",
 		prepareArgs: []any{Address{}, Person{}},
@@ -746,7 +775,7 @@ func (s *ExprSuite) TestQueryError(c *C) {
 		query:       "SELECT street FROM t WHERE x = $Address.street, y = $Person.name",
 		prepareArgs: []any{Address{}, Person{}},
 		queryArgs:   []any{},
-		err:         `invalid input parameter: type "Address" not passed as a parameter`,
+		err:         `invalid input parameter: parameter with type "Address" missing`,
 	}, {
 		query:       "SELECT street FROM t WHERE x = $Person.id, y = $Person.name",
 		prepareArgs: []any{Person{}},
@@ -777,7 +806,7 @@ func (s *ExprSuite) TestQueryError(c *C) {
 		query:       "SELECT street FROM t WHERE y = $Person.name",
 		prepareArgs: []any{outerP},
 		queryArgs:   []any{shadowedP},
-		err:         "invalid input parameter: type expr_test.Person not passed as a parameter, have expr_test.Person",
+		err:         `invalid input parameter: parameter with type "expr_test.Person" missing, have type with same name: "expr_test.Person"`,
 	}}
 
 	tests = append(tests, testsShadowed...)
@@ -795,8 +824,12 @@ func (s *ExprSuite) TestQueryError(c *C) {
 		}
 
 		_, _, err = preparedExpr.Query(t.queryArgs...)
-		c.Assert(err, ErrorMatches, t.err,
-			Commentf("test %d failed:\ninput: %s", i, t.query))
+		if err != nil {
+			c.Assert(err.Error(), Equals, t.err,
+				Commentf("test %d failed:\nquery: %s", i, t.query))
+		} else {
+			c.Errorf("test %d failed:\nexpected err: %q but got nil\nquery: %q", i, t.err, t.query)
+		}
 	}
 }
 
