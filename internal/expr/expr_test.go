@@ -261,20 +261,20 @@ AND z = @sqlair_0 -- The line with $Person.id on it
 	"SELECT person.*, address.district FROM person JOIN address ON person.address_id = address.id WHERE person.name = 'Fred'",
 }, {
 	"single slice",
-	"SELECT name FROM person WHERE id IN ($S.*)",
-	"[Bypass[SELECT name FROM person WHERE id IN (] Input[S.*] Bypass[)]]",
+	"SELECT name FROM person WHERE id IN ($S[:])",
+	"[Bypass[SELECT name FROM person WHERE id IN (] Input[S[:]] Bypass[)]]",
 	[]any{sqlair.S{}},
 	"SELECT name FROM person WHERE id IN (@sqlair_0, @sqlair_1, @sqlair_2, @sqlair_3, @sqlair_4, @sqlair_5, @sqlair_6, @sqlair_7)",
 }, {
 	"many slices",
-	"SELECT * AS &Person.* FROM person WHERE id IN ($Person.id, $S.*, $Manager.id, $IntSlice.*, $StringSlice.*)",
-	"[Bypass[SELECT ] Output[[*] [Person.*]] Bypass[ FROM person WHERE id IN (] Input[Person.id] Bypass[, ] Input[S.*] Bypass[, ] Input[Manager.id] Bypass[, ] Input[IntSlice.*] Bypass[, ] Input[StringSlice.*] Bypass[)]]",
+	"SELECT * AS &Person.* FROM person WHERE id IN ($Person.id, $S[:], $Manager.id, $IntSlice[:], $StringSlice[:])",
+	"[Bypass[SELECT ] Output[[*] [Person.*]] Bypass[ FROM person WHERE id IN (] Input[Person.id] Bypass[, ] Input[S[:]] Bypass[, ] Input[Manager.id] Bypass[, ] Input[IntSlice[:]] Bypass[, ] Input[StringSlice[:]] Bypass[)]]",
 	[]any{sqlair.S{}, Person{}, Manager{}, IntSlice{}, StringSlice{}},
 	"SELECT address_id AS _sqlair_0, id AS _sqlair_1, name AS _sqlair_2 FROM person WHERE id IN (@sqlair_0, @sqlair_1, @sqlair_2, @sqlair_3, @sqlair_4, @sqlair_5, @sqlair_6, @sqlair_7, @sqlair_8, @sqlair_9, @sqlair_10, @sqlair_11, @sqlair_12, @sqlair_13, @sqlair_14, @sqlair_15, @sqlair_16, @sqlair_17, @sqlair_18, @sqlair_19, @sqlair_20, @sqlair_21, @sqlair_22, @sqlair_23, @sqlair_24, @sqlair_25)",
 }, {
 	"slices and other expressions in IN statement",
-	`SELECT name FROM person WHERE id IN ($S.*, func(1,2), "one", $IntSlice.*)`,
-	`[Bypass[SELECT name FROM person WHERE id IN (] Input[S.*] Bypass[, func(1,2), "one", ] Input[IntSlice.*] Bypass[)]]`,
+	`SELECT name FROM person WHERE id IN ($S[:], func(1,2), "one", $IntSlice[:])`,
+	`[Bypass[SELECT name FROM person WHERE id IN (] Input[S[:]] Bypass[, func(1,2), "one", ] Input[IntSlice[:]] Bypass[)]]`,
 	[]any{sqlair.S{}, IntSlice{}},
 	`SELECT name FROM person WHERE id IN (@sqlair_0, @sqlair_1, @sqlair_2, @sqlair_3, @sqlair_4, @sqlair_5, @sqlair_6, @sqlair_7, func(1,2), "one", @sqlair_8, @sqlair_9, @sqlair_10, @sqlair_11, @sqlair_12, @sqlair_13, @sqlair_14, @sqlair_15)`,
 }, {
@@ -392,7 +392,7 @@ func (s *ExprSuite) TestParseErrors(c *C) {
 		err:   `cannot parse expression: column 37: invalid identifier suffix following "Address"`,
 	}, {
 		query: "SELECT foo FROM t WHERE x = $Address",
-		err:   `cannot parse expression: column 36: unqualified type, expected Address.* or Address.<db tag>`,
+		err:   `cannot parse expression: column 36: unqualified type, expected Address.* or Address.<db tag> or Address[:]`,
 	}, {
 		query: "SELECT name AS (&Person.*)",
 		err:   `cannot parse expression: column 26: unexpected parentheses around types after "AS"`,
@@ -407,10 +407,11 @@ func (s *ExprSuite) TestParseErrors(c *C) {
 		err:   `cannot parse expression: column 30: missing parentheses around types after "AS"`,
 	}, {
 		query: "SELECT col1 AS &S FROM t",
-		err:   `cannot parse expression: column 17: unqualified type, expected S.* or S.<db tag>`,
+		// TODO change error message
+		err: `cannot parse expression: column 17: unqualified type, expected S.* or S.<db tag> or S[:]`,
 	}, {
 		query: "SELECT * AS &S FROM t",
-		err:   `cannot parse expression: column 14: unqualified type, expected S.* or S.<db tag>`,
+		err:   `cannot parse expression: column 14: unqualified type, expected S.* or S.<db tag> or S[:]`,
 	}}
 
 	for _, t := range tests {
@@ -663,12 +664,12 @@ func (s *ExprSuite) TestValidQuery(c *C) {
 		queryArgs:   []any{Person{ID: 666}, StringMap{"street": "Highway to Hell"}},
 		queryValues: []any{sql.Named("sqlair_0", "Highway to Hell"), sql.Named("sqlair_1", 666)},
 	}, {
-		query:       "SELECT name FROM person WHERE id IN ($S.*)",
+		query:       "SELECT name FROM person WHERE id IN ($S[:])",
 		prepareArgs: []any{sqlair.S{}},
 		queryArgs:   []any{sqlair.S{1, 2, 3, 4, 5, 6}},
 		queryValues: []any{sql.Named("sqlair_0", 1), sql.Named("sqlair_1", 2), sql.Named("sqlair_2", 3), sql.Named("sqlair_3", 4), sql.Named("sqlair_4", 5), sql.Named("sqlair_5", 6), sql.Named("sqlair_6", nil), sql.Named("sqlair_7", nil)},
 	}, {
-		query:       "SELECT name FROM person WHERE id IN ($S.*)",
+		query:       "SELECT name FROM person WHERE id IN ($S[:])",
 		prepareArgs: []any{sqlair.S{}},
 		queryArgs:   []any{sqlair.S{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}},
 		queryValues: []any{sql.Named("sqlair_0", 1), sql.Named("sqlair_1", 2), sql.Named("sqlair_2", 3), sql.Named("sqlair_3", 4), sql.Named("sqlair_4", 5), sql.Named("sqlair_5", 6), sql.Named("sqlair_6", 7), sql.Named("sqlair_7", 8), sql.Named("sqlair_8", 9), sql.Named("sqlair_9", 10)},
@@ -752,7 +753,7 @@ func (s *ExprSuite) TestQueryError(c *C) {
 		queryArgs:   []any{Person{}, Person{}},
 		err:         `invalid input parameter: type "Person" provided more than once`,
 	}, {
-		query:       "SELECT street FROM t WHERE x IN ($S.*)",
+		query:       "SELECT street FROM t WHERE x IN ($S[:])",
 		prepareArgs: []any{sqlair.S{}},
 		queryArgs:   []any{sqlair.S{}},
 		err:         `invalid input parameter: slice arg with type "S" has length 0`,
@@ -798,3 +799,5 @@ func (s *ExprSuite) TestQueryError(c *C) {
 			Commentf("test %d failed:\ninput: %s", i, t.query))
 	}
 }
+
+// TODO add test case for asterisk with slice, get it from git log or main.

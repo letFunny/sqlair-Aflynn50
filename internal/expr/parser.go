@@ -17,6 +17,11 @@ type queryPart interface {
 	part()
 }
 
+type typeSpecifier interface {
+	// TODO follow up the other discussion for the naming.
+	Name() string
+}
+
 // typeName stores a Go type and a member of it.
 type typeName struct {
 	name, member string
@@ -24,6 +29,23 @@ type typeName struct {
 
 func (tn typeName) String() string {
 	return tn.name + "." + tn.member
+}
+
+func (tn typeName) Name() string {
+	return tn.name
+}
+
+// sliceRange stores the type and range of a slice: name[low:high]
+type sliceRange struct {
+	name, low, high string
+}
+
+func (st sliceRange) Name() string {
+	return st.name
+}
+
+func (st sliceRange) String() string {
+	return fmt.Sprintf("%s[%s:%s]", st.name, st.low, st.high)
 }
 
 // columnName stores a SQL column and optionally its table.
@@ -41,9 +63,11 @@ func (cn columnName) String() string {
 // inputPart represents a named parameter that will be sent to the database
 // while performing the query.
 type inputPart struct {
-	sourceType typeName
-	isSlice    bool
-	raw        string
+	sourceType typeSpecifier
+	// TODO remove
+	// TODO idea represent operation on slice as closure from the beginning
+	isSlice bool
+	raw     string
 }
 
 func (p *inputPart) String() string {
@@ -376,6 +400,15 @@ func (p *Parser) skipString(s string) bool {
 	return false
 }
 
+func (p *Parser) skipNumber() bool {
+	found := false
+	for p.pos < len(p.input) && '0' <= p.input[p.pos] && p.input[p.pos] <= '9' {
+		found = true
+		p.pos++
+	}
+	return found
+}
+
 // isNameByte returns true if the given byte can be part of a name. It returns
 // false otherwise.
 func isNameByte(c byte) bool {
@@ -467,6 +500,47 @@ func (p *Parser) parseTargetType() (typeName, bool, error) {
 	return typeName{}, false, nil
 }
 
+// parseNumber consumes 1 or more consequent digits.
+func (p *Parser) parseNumber() (string, bool) {
+	mark := p.pos
+	if !p.skipNumber() {
+		return "", false
+	}
+	return p.input[mark:p.pos], true
+}
+
+// parseSliceRange parses a slice range composed of two indexes of the form
+// "[ low : high ]"
+func (p *Parser) parseSliceRange() (sliceRange, bool) {
+	cp := p.save()
+
+	id, ok := p.parseIdentifier()
+	if !ok {
+		return sliceRange{}, false
+	}
+	if !p.skipByte('[') {
+		cp.restore()
+		return sliceRange{}, false
+	}
+	p.skipBlanks()
+	low, _ := p.parseNumber()
+	p.skipBlanks()
+	if !p.skipByte(':') {
+		cp.restore()
+		// TODO error
+		return sliceRange{}, false
+	}
+	p.skipBlanks()
+	high, _ := p.parseNumber()
+	p.skipBlanks()
+	if !p.skipByte(']') {
+		cp.restore()
+		// TODO error
+		return sliceRange{}, false
+	}
+	return sliceRange{name: id, low: low, high: high}, true
+}
+
 // parseTypeName parses a Go type name qualified by a tag name (or asterisk)
 // of the form "TypeName.col_name".
 func (p *Parser) parseTypeName() (typeName, bool, error) {
@@ -474,7 +548,7 @@ func (p *Parser) parseTypeName() (typeName, bool, error) {
 
 	if id, ok := p.parseIdentifier(); ok {
 		if !p.skipByte('.') {
-			return typeName{}, false, fmt.Errorf("column %d: unqualified type, expected %s.* or %s.<db tag>", p.pos, id, id)
+			return typeName{}, false, fmt.Errorf("column %d: unqualified type, expected %s.* or %s.<db tag> or %s[:]", p.pos, id, id, id)
 		}
 
 		idField, ok := p.parseIdentifierAsterisk()
@@ -608,14 +682,23 @@ func (p *Parser) parseOutputExpression() (*outputPart, bool, error) {
 // parseInputExpression parses an input expression of the form "Type.name".
 func (p *Parser) parseInputExpression() (*inputPart, bool, error) {
 	cp := p.save()
-
-	if p.skipByte('$') {
-		if fn, ok, err := p.parseTypeName(); ok {
-			return &inputPart{sourceType: fn, raw: p.input[cp.pos:p.pos]}, true, nil
-		} else if err != nil {
-			return nil, false, err
-		}
+	if !p.skipByte('$') {
+		return nil, false, nil
 	}
+
+	// Case 1: slice range, $Type[low:high]
+	if tn, ok := p.parseSliceRange(); ok {
+		return &inputPart{sourceType: tn, raw: p.input[cp.pos:p.pos]}, true, nil
+	}
+
+	// Case 2: struct or dictionary, $Type.something
+	if tn, ok, err := p.parseTypeName(); ok {
+		return &inputPart{sourceType: tn, raw: p.input[cp.pos:p.pos]}, true, nil
+	} else if err != nil {
+		return nil, false, err
+	}
+
+	// TODO should we add this case to the input and throw an error?
 
 	cp.restore()
 	return nil, false, nil

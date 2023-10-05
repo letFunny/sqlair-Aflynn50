@@ -82,36 +82,39 @@ func prepareInput(ti typeNameToInfo, p *inputPart) (tm typeMember, err error) {
 			err = fmt.Errorf("input expression: %s: %s", err, p.raw)
 		}
 	}()
-	info, ok := ti[p.sourceType.name]
+	info, ok := ti[p.sourceType.Name()]
 	if !ok {
 		ts := getKeys(ti)
 		if len(ts) == 0 {
-			return nil, fmt.Errorf(`type %q not passed as a parameter`, p.sourceType.name)
+			return nil, fmt.Errorf(`type %q not passed as a parameter`, p.sourceType.Name())
 		} else {
 			// "%s" is used instead of %q to correctly print double quotes within the joined string.
-			return nil, fmt.Errorf(`type %q not passed as a parameter (have "%s")`, p.sourceType.name, strings.Join(ts, `", "`))
+			return nil, fmt.Errorf(`type %q not passed as a parameter (have "%s")`, p.sourceType.Name(), strings.Join(ts, `", "`))
 		}
 	}
-	if p.sourceType.member == "*" {
-		switch info := info.(type) {
-		case *structInfo, *mapInfo:
-			return nil, fmt.Errorf(`asterisk used with %s in invalid context`, info.typ().Kind())
-		case *sliceInfo:
-			tms, err := info.getAllMembers()
-			if err != nil {
-				return nil, err
+	switch t := p.sourceType.(type) {
+	case typeName:
+		if t.member == "*" {
+			if info.typ().Kind() == reflect.Slice {
+				return nil, fmt.Errorf(`asterisk used with %s`, info.typ().Kind())
 			}
-			p.isSlice = true
-			tm = tms[0]
-		default:
-			return nil, fmt.Errorf(`internal error: unknown type: %T`, info)
+			return nil, fmt.Errorf(`asterisk used with %s in invalid context`, info.typ().Kind())
 		}
-	} else {
-		tm, err = info.typeMember(p.sourceType.member)
+		tm, err = info.typeMember(t.member)
 		if err != nil {
 			return nil, err
 		}
+	case sliceRange:
+		// TODO change getAllMembers? does it make sense to have it even if the meaning is different?
+		tms, err := info.getAllMembers()
+		if err != nil {
+			return nil, err
+		}
+		// TODO remove, isSlice
+		p.isSlice = true
+		tm = tms[0]
 	}
+
 	return tm, nil
 }
 
@@ -349,3 +352,5 @@ func generateSQL(queryParts []queryPart, sliceLens []int) string {
 	}
 	return sql.String()
 }
+
+// TODO do we support arrays?
