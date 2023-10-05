@@ -110,8 +110,6 @@ func prepareInput(ti typeNameToInfo, p *inputPart) (tm typeMember, err error) {
 		if err != nil {
 			return nil, err
 		}
-		// TODO remove, isSlice
-		p.isSlice = true
 		tm = tms[0]
 	}
 
@@ -315,7 +313,7 @@ func generateSQL(queryParts []queryPart, sliceLens []int) string {
 	for _, part := range queryParts {
 		switch p := part.(type) {
 		case *inputPart:
-			if p.isSlice {
+			if _, ok := p.sourceType.(sliceRange); ok {
 				length := defaultSliceLen
 				if sliceLens != nil && sliceLens[sliceCount] > defaultSliceLen {
 					length = sliceLens[sliceCount]

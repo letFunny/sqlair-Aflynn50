@@ -64,10 +64,7 @@ func (cn columnName) String() string {
 // while performing the query.
 type inputPart struct {
 	sourceType typeSpecifier
-	// TODO remove
-	// TODO idea represent operation on slice as closure from the beginning
-	isSlice bool
-	raw     string
+	raw        string
 }
 
 func (p *inputPart) String() string {
