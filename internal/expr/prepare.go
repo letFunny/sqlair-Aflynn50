@@ -91,9 +91,6 @@ func prepareInput(ti typeNameToInfo, p *inputPart) (tm typeMember, err error) {
 	switch t := p.sourceType.(type) {
 	case typeName:
 		if t.member == "*" {
-			if info.typ().Kind() == reflect.Slice {
-				return nil, fmt.Errorf(`asterisk used with %s`, info.typ().Kind())
-			}
 			return nil, fmt.Errorf(`asterisk used with %s in invalid context`, info.typ().Kind())
 		}
 		tm, err = info.typeMember(t.member)

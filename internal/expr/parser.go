@@ -36,7 +36,7 @@ func (tn typeName) Name() string {
 	return tn.name
 }
 
-// sliceRange stores the type and range of a slice: name[low:high]
+// sliceRange stores the type name and range of a slice: name[low:high]
 type sliceRange struct {
 	name, low, high string
 }
@@ -49,6 +49,9 @@ func (st sliceRange) String() string {
 	return fmt.Sprintf("%s[%s:%s]", st.name, st.low, st.high)
 }
 
+// applyToLen gets the slice length and calculates the final length of the
+// array when we apply the range expression, or error if there are not enough
+// elements.
 func (sr sliceRange) applyToLen(sliceLen int) (finalLen int, err error) {
 	if sr.high == "" && sr.low == "" {
 		return sliceLen, nil
@@ -74,8 +77,8 @@ func (sr sliceRange) applyToLen(sliceLen int) (finalLen int, err error) {
 	}
 }
 
-// applyToValue takes a reflect.Value of type slice or array and returns a new slice using
-// the range, namely val[low:high].
+// applyToValue takes a reflect.Value of type slice and returns a new slice
+// using the range, namely val[low:high].
 func (sr sliceRange) applyToValue(s reflect.Value) reflect.Value {
 	if sr.high == "" && sr.low == "" {
 		return s
@@ -584,7 +587,7 @@ func (p *Parser) parseTargetType() (typeName, bool, error) {
 	return typeName{}, false, nil
 }
 
-// parseNumber consumes 1 or more consequent digits.
+// parseNumber consumes one or more consecutive digits.
 func (p *Parser) parseNumber() (string, bool) {
 	mark := p.pos
 	if !p.skipNumber() {
@@ -596,13 +599,13 @@ func (p *Parser) parseNumber() (string, bool) {
 // parseSliceRange parses a slice range composed of two indexes of the form
 // "[ low : high ]"
 func (p *Parser) parseSliceRange() (sr sliceRange, ok bool, err error) {
-	cp := p.save()
-
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("invalid slice range: %s", err)
 		}
 	}()
+
+	cp := p.save()
 
 	id, ok := p.parseIdentifier()
 	if !ok {
