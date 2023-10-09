@@ -11,10 +11,11 @@ import (
 
 // PreparedExpr contains an SQL expression that is ready for execution.
 type PreparedExpr struct {
-	outputs    []typeMember
-	inputs     []typeMember
-	queryParts []queryPart
-	outputCols [][]columnName
+	outputs     []typeMember
+	inputs      []typeMember
+	queryParts  []queryPart
+	outputCols  [][]columnName
+	sliceRanges map[typeMember]sliceRange
 }
 
 const markerPrefix = "_sqlair_"
@@ -83,31 +84,34 @@ func prepareInput(ti typeNameToInfo, p *inputPart) (tm typeMember, err error) {
 			err = fmt.Errorf("input expression: %s: %s", err, p.raw)
 		}
 	}()
-
-	info, ok := ti[p.sourceType.name]
+	info, ok := ti[p.sourceType.Name()]
 	if !ok {
-		return nil, typeMissingError(p.sourceType.name, getKeys(ti))
+		return nil, typeMissingError(p.sourceType.Name(), getKeys(ti))
 	}
-	if p.sourceType.member == sliceExtention {
-		switch info := info.(type) {
-		case *structInfo, *mapInfo:
-			return nil, fmt.Errorf(`cannot use slice syntax with %s`, info.typ().Kind())
-		case *sliceInfo:
-			tms, err := info.getAllMembers()
-			if err != nil {
-				return nil, err
+	switch t := p.sourceType.(type) {
+	case typeName:
+		if t.member == "*" {
+			if info.typ().Kind() == reflect.Slice {
+				return nil, fmt.Errorf(`asterisk used with %s`, info.typ().Kind())
 			}
-			p.isSlice = true
-			tm = tms[0]
-		default:
-			return nil, fmt.Errorf(`internal error: unknown type: %T`, info)
+			return nil, fmt.Errorf(`asterisk used with %s in invalid context`, info.typ().Kind())
 		}
-	} else {
-		tm, err = info.typeMember(p.sourceType.member)
+		tm, err = info.typeMember(t.member)
 		if err != nil {
 			return nil, err
 		}
+	case sliceRange:
+		// TODO change getAllMembers? does it make sense to have it even if the meaning is different?
+		if _, ok = info.(*sliceInfo); !ok {
+			return nil, fmt.Errorf("cannot use slice syntax with %s", info.typ().Kind())
+		}
+		tms, err := info.getAllMembers()
+		if err != nil {
+			return nil, err
+		}
+		tm = tms[0]
 	}
+
 	return tm, nil
 }
 
@@ -235,7 +239,7 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 		}
 		t := reflect.TypeOf(arg)
 		switch t.Kind() {
-		case reflect.Struct, reflect.Map, reflect.Slice, reflect.Array:
+		case reflect.Struct, reflect.Map, reflect.Slice:
 			if t.Name() == "" {
 				return nil, fmt.Errorf("cannot use anonymous %s", t.Kind())
 			}
@@ -261,6 +265,7 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 	var inputs = make([]typeMember, 0)
 	var typeMemberPresent = make(map[typeMember]bool)
 	var outputCols = make([][]columnName, 0)
+	sliceRanges := make(map[typeMember]sliceRange)
 
 	// Check and expand each query part.
 	for _, part := range pe.queryParts {
@@ -271,6 +276,9 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 				return nil, err
 			}
 			inputs = append(inputs, tm)
+			if sr, ok := p.sourceType.(sliceRange); ok {
+				sliceRanges[tm] = sr
+			}
 		case *outputPart:
 			outCols, typeMembers, err := prepareOutput(ti, p)
 			if err != nil {
@@ -290,7 +298,7 @@ func (pe *ParsedExpr) Prepare(args ...any) (expr *PreparedExpr, err error) {
 			return nil, fmt.Errorf("internal error: unknown query part type %T", part)
 		}
 	}
-	return &PreparedExpr{inputs: inputs, outputs: outputs, queryParts: pe.queryParts, outputCols: outputCols}, nil
+	return &PreparedExpr{inputs: inputs, outputs: outputs, queryParts: pe.queryParts, outputCols: outputCols, sliceRanges: sliceRanges}, nil
 }
 
 // stmtCriterion contains information that specifies the different SQL strings
@@ -310,7 +318,7 @@ func (pe *PreparedExpr) sql(sc *stmtCriterion) string {
 	for _, part := range pe.queryParts {
 		switch p := part.(type) {
 		case *inputPart:
-			if p.isSlice {
+			if _, ok := p.sourceType.(sliceRange); ok {
 				if !sc.enabled {
 					panic("internal error: stmtCriterion must be enabled for statement containing slice")
 				}

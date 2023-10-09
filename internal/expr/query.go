@@ -105,12 +105,17 @@ func (pe *PreparedExpr) Query(args ...any) (ce *QueryExpr, err error) {
 			argCount++
 		case *sliceType:
 			sliceLen := v.Len()
-			if sliceLen == 0 {
-				return nil, fmt.Errorf(`slice arg with type %q has length 0`, tm.sliceType.Name())
+			sr := pe.sliceRanges[typeMember]
+			length, err := sr.applyToLen(sliceLen)
+			if err != nil {
+				return nil, err
 			}
-			sliceLens = append(sliceLens, sliceLen)
-			i := 0
-			for i = 0; i < v.Len(); i++ {
+			if length <= 0 {
+				return nil, fmt.Errorf(`slice range %q has length %d`, sr, length)
+			}
+			sliceLens = append(sliceLens, length)
+			v = sr.applyToValue(v)
+			for i := 0; i < v.Len(); i++ {
 				sv := v.Index(i)
 				qargs = append(qargs, sql.Named("sqlair_"+strconv.Itoa(argCount), sv.Interface()))
 				argCount++

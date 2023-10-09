@@ -62,7 +62,7 @@ func (st *sliceType) outerType() reflect.Type {
 }
 
 func (st *sliceType) memberName() string {
-	return sliceExtention
+	return ""
 }
 
 // typeInfo exposes useful information about types used in SQLair queries.

@@ -3,6 +3,8 @@ package expr
 import (
 	"bytes"
 	"fmt"
+	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -17,18 +19,77 @@ type queryPart interface {
 	part()
 }
 
+type typeSpecifier interface {
+	Name() string
+}
+
 // typeName stores a Go type and a member of it.
 type typeName struct {
 	name, member string
 }
 
-const sliceExtention = "[:]"
-
 func (tn typeName) String() string {
-	if tn.member == sliceExtention {
-		return tn.name + sliceExtention
-	}
 	return tn.name + "." + tn.member
+}
+
+func (tn typeName) Name() string {
+	return tn.name
+}
+
+// sliceRange stores the type and range of a slice: name[low:high]
+type sliceRange struct {
+	name, low, high string
+}
+
+func (st sliceRange) Name() string {
+	return st.name
+}
+
+func (st sliceRange) String() string {
+	return fmt.Sprintf("%s[%s:%s]", st.name, st.low, st.high)
+}
+
+func (sr sliceRange) applyToLen(sliceLen int) (finalLen int, err error) {
+	if sr.high == "" && sr.low == "" {
+		return sliceLen, nil
+	}
+
+	highN, _ := strconv.Atoi(sr.high)
+	lowN, _ := strconv.Atoi(sr.low)
+	if sr.high == "" {
+		if sliceLen < lowN {
+			return 0, fmt.Errorf("slice bounds %q out of range for slice of size %d", sr, sliceLen)
+		}
+		return sliceLen - lowN, nil
+	} else if sr.low == "" {
+		if sliceLen < highN {
+			return 0, fmt.Errorf("slice bounds %q out of range for slice of size %d", sr, sliceLen)
+		}
+		return highN, nil
+	} else {
+		if sliceLen < highN {
+			return 0, fmt.Errorf("slice bounds %q out of range for slice of size %d", sr, sliceLen)
+		}
+		return highN - lowN, nil
+	}
+}
+
+// applyToValue takes a reflect.Value of type slice or array and returns a new slice using
+// the range, namely val[low:high].
+func (sr sliceRange) applyToValue(s reflect.Value) reflect.Value {
+	if sr.high == "" && sr.low == "" {
+		return s
+	}
+
+	highN, _ := strconv.Atoi(sr.high)
+	lowN, _ := strconv.Atoi(sr.low)
+	if sr.high == "" {
+		return s.Slice(lowN, s.Len())
+	} else if sr.low == "" {
+		return s.Slice(0, highN)
+	} else {
+		return s.Slice(lowN, highN)
+	}
 }
 
 // columnName stores a SQL column and optionally its table.
@@ -46,8 +107,7 @@ func (cn columnName) String() string {
 // inputPart represents a named parameter that will be sent to the database
 // while performing the query.
 type inputPart struct {
-	sourceType typeName
-	isSlice    bool
+	sourceType typeSpecifier
 	raw        string
 }
 
@@ -424,6 +484,15 @@ func (p *Parser) skipString(s string) bool {
 	return false
 }
 
+func (p *Parser) skipNumber() bool {
+	found := false
+	for p.pos < len(p.input) && '0' <= p.input[p.pos] && p.input[p.pos] <= '9' {
+		found = true
+		p.pos++
+	}
+	return found
+}
+
 // isNameByte returns true if the given byte can be part of a name. It returns
 // false otherwise.
 func isNameByte(c byte) bool {
@@ -515,6 +584,58 @@ func (p *Parser) parseTargetType() (typeName, bool, error) {
 	return typeName{}, false, nil
 }
 
+// parseNumber consumes 1 or more consequent digits.
+func (p *Parser) parseNumber() (string, bool) {
+	mark := p.pos
+	if !p.skipNumber() {
+		return "", false
+	}
+	return p.input[mark:p.pos], true
+}
+
+// parseSliceRange parses a slice range composed of two indexes of the form
+// "[ low : high ]"
+func (p *Parser) parseSliceRange() (sr sliceRange, ok bool, err error) {
+	cp := p.save()
+
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("invalid slice range: %s", err)
+		}
+	}()
+
+	id, ok := p.parseIdentifier()
+	if !ok {
+		return sliceRange{}, false, nil
+	}
+	if !p.skipByte('[') {
+		cp.restore()
+		return sliceRange{}, false, nil
+	}
+	p.skipBlanks()
+	low, _ := p.parseNumber()
+	p.skipBlanks()
+	if !p.skipByte(':') {
+		cp.restore()
+		return sliceRange{}, false, fmt.Errorf("expected colon")
+	}
+	p.skipBlanks()
+	high, _ := p.parseNumber()
+	p.skipBlanks()
+	if !p.skipByte(']') {
+		cp.restore()
+		return sliceRange{}, false, fmt.Errorf("missing closing bracket")
+	}
+	if high != "" && low != "" {
+		highN, _ := strconv.Atoi(high)
+		lowN, _ := strconv.Atoi(low)
+		if lowN >= highN {
+			return sliceRange{}, false, fmt.Errorf("invalid indexes: %q < %q", high, low)
+		}
+	}
+	return sliceRange{name: id, low: low, high: high}, true, nil
+}
+
 // parseTypeName parses a Go type name qualified by a tag name (or asterisk)
 // of the form "TypeName.col_name".
 func (p *Parser) parseTypeName() (typeName, bool, error) {
@@ -523,11 +644,8 @@ func (p *Parser) parseTypeName() (typeName, bool, error) {
 	// The error points to the skipped & or $.
 	identifierCol := p.colNum() - 1
 	if id, ok := p.parseIdentifier(); ok {
-		if p.skipString(sliceExtention) {
-			return typeName{name: id, member: sliceExtention}, true, nil
-		}
 		if !p.skipByte('.') {
-			return typeName{}, false, errorAt(fmt.Errorf("unqualified type, expected %s.* or %s.<db tag>", id, id), p.lineNum, identifierCol, p.input)
+			return typeName{}, false, errorAt(fmt.Errorf("unqualified type, expected %s.* or %s.<db tag> or %s[:]", id, id, id), p.lineNum, identifierCol, p.input)
 		}
 
 		idField, ok := p.parseIdentifierAsterisk()
@@ -620,7 +738,22 @@ func (p *Parser) parseTargetTypes() (types []typeName, parentheses bool, ok bool
 func (p *Parser) parseOutputExpression() (*outputPart, bool, error) {
 	start := p.pos
 
-	// Case 1: There are no columns e.g. "&Person.*".
+	cp := p.save()
+	cpCol := p.colNum()
+
+	// Case 1: slice range, "&Type[low:high]"
+	// Using a slice as an output is an error, we add the case here to
+	// improve the error message.
+	if p.skipByte('&') {
+		if st, ok, err := p.parseSliceRange(); err != nil {
+			return nil, false, err
+		} else if ok {
+			return nil, false, errorAt(fmt.Errorf("cannot use slice syntax %s in output expression", st), cp.lineNum, cpCol, p.input)
+		}
+		cp.restore()
+	}
+
+	// Case 2: There are no columns e.g. "&Person.*".
 	if targetType, ok, err := p.parseTargetType(); err != nil {
 		return nil, false, err
 	} else if ok {
@@ -631,9 +764,7 @@ func (p *Parser) parseOutputExpression() (*outputPart, bool, error) {
 		}, true, nil
 	}
 
-	cp := p.save()
-
-	// Case 2: There are columns e.g. "p.col1 AS &Person.*".
+	// Case 3: There are columns e.g. "p.col1 AS &Person.*".
 	if cols, parenCols, ok := p.parseColumns(); ok {
 		p.skipBlanks()
 		if p.skipString("AS") {
@@ -664,18 +795,26 @@ func (p *Parser) parseOutputExpression() (*outputPart, bool, error) {
 // parseInputExpression parses an input expression of the form "$Type.name".
 func (p *Parser) parseInputExpression() (*inputPart, bool, error) {
 	cp := p.save()
+	cpCol := p.colNum()
+	if !p.skipByte('$') {
+		return nil, false, nil
+	}
 
-	if p.skipByte('$') {
-		// Error points to the $ sign skipped above.
-		nameCol := p.colNum() - 1
-		if tn, ok, err := p.parseTypeName(); ok {
-			if tn.member == "*" {
-				return nil, false, errorAt(fmt.Errorf(`asterisk not allowed in input expression "$%s"`, tn), p.lineNum, nameCol, p.input)
-			}
-			return &inputPart{sourceType: tn, raw: p.input[cp.pos:p.pos]}, true, nil
-		} else if err != nil {
-			return nil, false, err
+	// Case 1: slice range, "Type[low:high]"
+	if st, ok, err := p.parseSliceRange(); err != nil {
+		return nil, false, err
+	} else if ok {
+		return &inputPart{sourceType: st, raw: p.input[cp.pos:p.pos]}, true, nil
+	}
+
+	// Case 2: struct or dictionary, "Type.something"
+	if tn, ok, err := p.parseTypeName(); ok {
+		if tn.member == "*" {
+			return nil, false, errorAt(fmt.Errorf("asterisk not allowed in input expression %q", tn), cp.lineNum, cpCol, p.input)
 		}
+		return &inputPart{sourceType: tn, raw: p.input[cp.pos:p.pos]}, true, nil
+	} else if err != nil {
+		return nil, false, err
 	}
 
 	cp.restore()

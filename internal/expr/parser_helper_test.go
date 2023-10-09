@@ -48,6 +48,12 @@ func (s *ExprInternalSuite) TestRunTable(c *C) {
 		{stringf0: p.skipName, result: []bool{false}, input: "*", data: []string{}},
 		{stringf0: p.skipName, result: []bool{true}, input: "hello", data: []string{}},
 		{stringf0: p.skipName, result: []bool{false}, input: "2d3d", data: []string{}},
+
+		{stringf0: p.skipNumber, result: []bool{true}, input: "2d3d", data: []string{}},
+		{stringf0: p.skipNumber, result: []bool{false}, input: "-2", data: []string{}},
+		{stringf0: p.skipNumber, result: []bool{false}, input: "a2", data: []string{}},
+		{stringf0: p.skipNumber, result: []bool{true}, input: "2123918", data: []string{}},
+		{stringf0: p.skipNumber, result: []bool{true}, input: "2123918as", data: []string{}},
 	}
 	for _, v := range parseTests {
 		// Reset the input.
@@ -166,6 +172,49 @@ func (s *ExprInternalSuite) TestRemoveComments(c *C) {
 		p.init(s)
 		if ok := p.skipComment(); ok {
 			c.Errorf("comment %s parsed as comment when it should not be", s)
+		}
+	}
+}
+
+func (s *ExprInternalSuite) TestParseSliceRange(c *C) {
+	validSliceRanges := []struct {
+		input  string
+		output sliceRange
+	}{
+		{"mySlice[:]", sliceRange{name: "mySlice", low: "", high: ""}},
+		{"mySlice[ : ]", sliceRange{name: "mySlice", low: "", high: ""}},
+		{"mySlice[1020:]", sliceRange{name: "mySlice", low: "1020", high: ""}},
+		{"mySlice[:33]", sliceRange{name: "mySlice", low: "", high: "33"}},
+		{"mySlice[12:34]", sliceRange{name: "mySlice", low: "12", high: "34"}},
+		{"mySlice[ 12  : 34   ]", sliceRange{name: "mySlice", low: "12", high: "34"}},
+	}
+	invalidSliceRanges := []string{"[]",
+		"name[3:1]",
+		"name[1:1]",
+		"name[a:]",
+		"name[:b]",
+		"name[1a2:]",
+		"name[1 2:]",
+		"name[:1 2]",
+		"name[:1b2]",
+		"name[1a:2b]",
+		"[:]",
+		"[1:10]",
+	}
+
+	var p = NewParser()
+	for _, t := range validSliceRanges {
+		p.init(t.input)
+		sr, ok, err := p.parseSliceRange()
+		if !ok || err != nil {
+			c.Errorf("test failed. %s not parsed as valid slice range", t.input)
+		}
+		c.Assert(t.output, DeepEquals, sr)
+	}
+	for _, s := range invalidSliceRanges {
+		p.init(s)
+		if _, ok, err := p.parseSliceRange(); ok && err == nil {
+			c.Errorf("test failed. %s parsed as valid slice range", s)
 		}
 	}
 }
